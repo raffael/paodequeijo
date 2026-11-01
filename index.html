@@ -124,7 +124,12 @@
   .stay .item-kind, .stay .item-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .stay small { font-size: 12px; color: var(--text-secondary); }
   .tick { position: absolute; height: 1.5px; z-index: 1; pointer-events: none; }
-  .card { z-index: 3; display: flex; gap: 9px; align-items: flex-start; padding: 8px 10px; overflow: hidden; background: var(--bg); border: 1px solid #c7c7cc; border-radius: 10px; box-shadow: 0 1px 2px rgb(0 0 0 / .06); }
+  .tick.link { z-index: 3; }
+  .pill { position: absolute; z-index: 3; cursor: pointer; border-radius: 999px; border: 1.5px solid var(--pill-edge); background: var(--pill-bg); }
+  .pill.status-planned { border-style: dashed; background: var(--pill-tint); }
+  .pill:hover { box-shadow: 0 1px 6px rgb(0 0 0 / .3); }
+  .pill.status-suggestion:hover { opacity: .85; }
+  .card { z-index: 4; display: flex; gap: 9px; align-items: flex-start; padding: 8px 10px; overflow: hidden; background: var(--bg); border: 1px solid #c7c7cc; border-radius: 10px; box-shadow: 0 1px 2px rgb(0 0 0 / .06); }
   .card.flag { background: var(--accent-tint); border-color: var(--accent); }
   .card .text { min-width: 0; flex: 1; }
   .card .item-kind, .card .item-title, .card .meta { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -761,6 +766,7 @@ async function quickSave() {
 /* ---------- Scale ---------- */
 
 const ZOOM_MIN = 40, ZOOM_MAX = 1200, PAD = 24;
+const PILL_ZOOM = 320; // from here on (where hour labels also appear), travel and activities get a capsule
 const zoomToSlider = z => 100 * Math.log(z / ZOOM_MIN) / Math.log(ZOOM_MAX / ZOOM_MIN);
 const sliderToZoom = v => ZOOM_MIN * Math.pow(ZOOM_MAX / ZOOM_MIN, v / 100);
 const dayCount = () => Math.round((tripEnd(rec.trip) - tripStart(rec.trip)) / DAY);
@@ -897,14 +903,23 @@ function renderTimeline() {
     track.append(h(`.marker.status-${statusOf(it)}`, { style: { left: px(lineCenter), top: px(y(toMs(it.at))) } }, iconFor(it)));
   }
 
-  // Stays sit in a column right next to the line
+  // Zoomed in far enough, travel and activities also show as capsules right next to the line
+  const pillW = mobile ? 12 : 16, pillX = gutter + lineW + 6;
+  const pills = pxPerDay < PILL_ZOOM ? [] : trip.items.filter(i => i.type === 'travel' || i.type === 'activity').map(it => {
+    const a = toMs(it.at), b = Math.max(toMs(it.until || it.at), a);
+    return { it, a, top: y(a), height: Math.max(dur(b - a), pillW) };
+  });
+  const pillLanes = assignLanes(pills, 3);
+  const pillOf = new Map(pills.map(pl => [pl.it.id, pl]));
+
+  // Stays sit in a column next to the capsules
   const stays = trip.items.filter(i => i.type === 'stay').map(it => {
     const a = toMs(it.at), b = Math.max(toMs(it.until || it.at), a);
     return { it, top: y(a), height: Math.max(dur(b - a), it.title ? 52 : 34), a };
   });
   const stayLanes = assignLanes(stays, 2);
   const stayW = mobile ? 30 : 136;
-  const stayX = gutter + lineW + 8;
+  const stayX = pillLanes ? pillX + pillLanes * (pillW + 4) + 6 : gutter + lineW + 8;
   for (const s of stays) {
     const place = placeAt(segs, s.a).name;
     const color = place ? placeColor(place) : '#aeaeb2';
@@ -925,7 +940,8 @@ function renderTimeline() {
     const a = toMs(it.at), b = Math.max(toMs(it.until || it.at), a);
     const lines = 2 + (headingNodes(it).length > 1 ? 1 : 0) + (mismatches[it.id] ? 1 : 0) + (safeUrl(it.url) || mapQuery(it.address) ? 1 : 0);
     const min = compact ? 30 : 20 + lines * 17;
-    return { it, a, y: y(a), top: Math.max(y(a) - 15, 0), height: Math.max(dur(b - a) + 15, min) };
+    const shift = pillOf.has(it.id) ? pillW / 2 : 0; // the connector meets the capsule at its center, not at the start time
+    return { it, a, y: y(a) + shift, top: Math.max(y(a) + shift - 15, 0), height: Math.max(dur(b - a) + 15 - shift, min) };
   });
   const cardLanes = Math.max(assignLanes(cards, 5), 1);
   const cardX = stayX + (stayLanes ? stayLanes * (stayW + 4) : 0) + 16;
@@ -940,7 +956,9 @@ function renderTimeline() {
     const flag = c.it.type === 'start' || c.it.type === 'end';
     const warn = mismatches[c.it.id];
     const links = itemLinks(c.it, 'Open link');
-    track.append(h(`.tick.status-${statusOf(c.it)}`, { style: { left: px(gutter + lineW), top: px(c.y - 1), width: px(x - gutter - lineW), background: color } }));
+    const pill = pillOf.get(c.it.id);
+    const from = pill ? pillX + pill.lane * (pillW + 4) + pillW : gutter + lineW;
+    track.append(h(`.tick.status-${statusOf(c.it)}${pill ? '.link' : ''}`, { style: { left: px(from), top: px(c.y - 1), width: px(x - from), background: color } }));
     track.append(itemNode(flag ? '.card.flag' : '.card', c.it, { left: px(x), top: px(c.top), width: px(laneW), height: px(c.height) },
       h('span.text', {},
         headingNodes(c.it),
@@ -948,6 +966,23 @@ function renderTimeline() {
         warn && h('span.meta.warn', {}, `You're in ${warn} before this`),
         links.length > 0 && h('span.meta', {}, links))));
     if (compact) track.lastChild.classList.add('compact');
+  }
+
+  const tint = c => `color-mix(in oklch, ${c} 25%, white)`;
+  for (const pl of pills) {
+    const it = pl.it, travel = it.type === 'travel';
+    const color = placeColor(placeAt(segs, pl.a).name || '');
+    const c1 = travel ? placeColor(it.from) : color, c2 = travel ? placeColor(it.to) : color;
+    track.append(h(`.pill.status-${statusOf(it)}`, {
+      title: `${titleFor(it)}, ${metaFor(it)}`, 'aria-hidden': 'true',
+      onclick() { if (readOnly) openDetails(it); else openItemDialog(it); },
+      style: {
+        left: px(pillX + pl.lane * (pillW + 4)), top: px(pl.top), width: px(pillW), height: px(pl.height),
+        '--pill-bg': travel ? `linear-gradient(${c1}, ${c2})` : c1,
+        '--pill-tint': travel ? `linear-gradient(${tint(c1)}, ${tint(c2)})` : tint(c1),
+        '--pill-edge': `color-mix(in oklch, ${c2} 60%, black)`,
+      },
+    }));
   }
 
   if (trip.items.every(i => i.type === 'start') && !readOnly) {
