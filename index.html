@@ -121,7 +121,8 @@
   .glyph { width: 1.15em; height: 1.15em; margin-right: .3em; vertical-align: -.2em; flex: none; }
   .stay-icon { display: none; }
   .stay-icon .glyph { width: 16px; height: 16px; margin: 0; vertical-align: top; }
-  .stay .item-kind, .stay .item-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .stay .item-kind { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .stay .item-title, .card .item-title { white-space: normal; overflow-wrap: anywhere; }
   .stay small { font-size: 12px; color: var(--text-secondary); }
   .tick { position: absolute; height: 1.5px; z-index: 1; pointer-events: none; }
   .tick.link { z-index: 3; }
@@ -132,7 +133,8 @@
   .card { z-index: 4; display: flex; gap: 9px; align-items: flex-start; padding: 8px 10px; overflow: hidden; background: var(--bg); border: 1px solid #c7c7cc; border-radius: 10px; box-shadow: 0 1px 2px rgb(0 0 0 / .06); }
   .card.flag { background: var(--accent-tint); border-color: var(--accent); }
   .card .text { min-width: 0; flex: 1; }
-  .card .item-kind, .card .item-title, .card .meta { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card .item-kind, .card .item-title, .card .meta { display: block; overflow: hidden; text-overflow: ellipsis; }
+  .card .item-kind, .card .meta { white-space: nowrap; }
   .item-kind { display: block; font-size: 12px; font-weight: 400; color: var(--text-secondary); }
   .item-kind.alone { font-size: 13px; color: var(--text); }
   .item-title { display: block; font-size: 13px; font-weight: 400; }
@@ -143,6 +145,7 @@
   .card.compact { padding: 2px 8px; align-items: center; }
   .card.compact .text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .card.compact .item-kind, .card.compact .item-title { display: inline; }
+  .card.compact .item-title { white-space: nowrap; }
   .card.compact .item-kind { margin-right: 5px; }
   .card.compact .meta { display: none; }
   .card.status-planned { border: 1.5px dashed #8e8e93; }
@@ -835,6 +838,35 @@ function itemLinks(it, linkLabel) {
     .flatMap((part, i) => (i ? [' · ', part] : [part]));
 }
 
+// How many lines a text takes in a box of the given width, so boxes can be sized before they are drawn.
+let measureContext;
+function textLines(text, weight, size, maxWidth) {
+  measureContext ||= document.createElement('canvas').getContext('2d');
+  measureContext.font = `${weight} ${size}px ${getComputedStyle(document.body).fontFamily}`;
+  const width = t => measureContext.measureText(t).width, room = Math.max(maxWidth, 20) * .97;
+  let lines = 1, line = '';
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    const next = line ? `${line} ${word}` : word;
+    if (width(next) <= room) { line = next; continue; }
+    if (line) lines++;
+    lines += Math.max(0, Math.ceil(width(word) / room) - 1); // a very long word breaks anywhere
+    line = width(word) > room ? '' : word;
+  }
+  return lines;
+}
+const titleText = it => it.type === 'travel' ? `${it.from} → ${it.to}` : it.type === 'start' || it.type === 'end' ? it.location || '' : it.title || '';
+const nightsText = it => {
+  const n = it.until ? Math.round((toMs(it.until.slice(0, 10)) - toMs(it.at.slice(0, 10))) / DAY) : 0;
+  return n === 1 ? '1 night' : `${n} nights`;
+};
+function stayMinHeight(it, boxWidth) {
+  const room = boxWidth - 19; // padding and borders
+  const links = [safeUrl(it.url) && 'Link', mapQuery(it.address) && 'Map'].filter(Boolean).join(' · ');
+  const small = textLines(`${nightsText(it)} ${links}`, 400, 12, room);
+  const head = it.title ? 16.2 + textLines(it.title, 600, 13, room) * 17.6 : 17.6;
+  return Math.ceil(15 + head + small * 16.2 + 2);
+}
+
 // Greedy interval packing: each entry takes the first lane it fits in.
 function assignLanes(entries, gap) {
   const laneEnds = [];
@@ -913,40 +945,50 @@ function renderTimeline() {
   const pillOf = new Map(pills.map(pl => [pl.it.id, pl]));
 
   // Stays sit in a column next to the capsules
+  const stayW = mobile ? 30 : 136;
   const stays = trip.items.filter(i => i.type === 'stay').map(it => {
     const a = toMs(it.at), b = Math.max(toMs(it.until || it.at), a);
-    return { it, top: y(a), height: Math.max(dur(b - a), it.title ? 52 : 34), a };
+    return { it, top: y(a), height: Math.max(dur(b - a), mobile ? (it.title ? 52 : 34) : stayMinHeight(it, stayW)), a };
   });
   const stayLanes = assignLanes(stays, 2);
-  const stayW = mobile ? 30 : 136;
   const stayX = pillLanes ? pillX + pillLanes * (pillW + 4) + 6 : gutter + lineW + 8;
   for (const s of stays) {
     const place = placeAt(segs, s.a).name;
     const color = place ? placeColor(place) : '#aeaeb2';
     const links = itemLinks(s.it, 'Link');
-    const nights = s.it.until ? Math.round((toMs(s.it.until.slice(0, 10)) - toMs(s.it.at.slice(0, 10))) / DAY) : 0;
     track.append(itemNode('.stay', s.it, {
       left: px(stayX + s.lane * (stayW + 4)), top: px(s.top), width: px(stayW), height: px(s.height),
       'border-color': color, background: `color-mix(in oklch, ${color} 28%, white)`,
     }, h('span.stay-inner', {},
       h('span.stay-icon', {}, glyph(s.it)),
       headingNodes(s.it),
-      !mobile && h('small', {}, nights === 1 ? '1 night' : `${nights} nights`),
+      !mobile && h('small', {}, nightsText(s.it)),
       links.length > 0 && !mobile && h('small', {}, ' ', links))));
   }
 
   // Everything else gets a card, connected to the line by a tick
-  const cards = trip.items.filter(i => i.type !== 'stay').map(it => {
-    const a = toMs(it.at), b = Math.max(toMs(it.until || it.at), a);
-    const lines = 2 + (headingNodes(it).length > 1 ? 1 : 0) + (mismatches[it.id] ? 1 : 0) + (safeUrl(it.url) || mapQuery(it.address) ? 1 : 0);
-    const min = compact ? 30 : 20 + lines * 17;
-    const shift = pillOf.has(it.id) ? pillW / 2 : 0; // the connector meets the capsule at its center, not at the start time
-    return { it, a, y: y(a) + shift, top: Math.max(y(a) + shift - 15, 0), height: Math.max(dur(b - a) + 15 - shift, min) };
-  });
-  const cardLanes = Math.max(assignLanes(cards, 5), 1);
   const cardX = stayX + (stayLanes ? stayLanes * (stayW + 4) : 0) + 16;
   const avail = scroller.clientWidth - cardX - 14;
-  const laneW = clamp(avail / cardLanes - 6, Math.min(170, avail), 340);
+  const cards = trip.items.filter(i => i.type !== 'stay').map(it => {
+    const a = toMs(it.at), b = Math.max(toMs(it.until || it.at), a);
+    return { it, a, b, shift: pillOf.has(it.id) ? pillW / 2 : 0 }; // the connector meets a capsule at its center
+  });
+  // Titles wrap, so a box's height depends on its width, which depends on how many columns the heights need.
+  let laneW = 340, cardLanes = 1;
+  for (let pass = 0; pass < 5; pass++) {
+    for (const c of cards) {
+      const title = titleText(c.it);
+      const titleLines = !title ? 0 : compact ? 1 : textLines(title, 600, 13, laneW - 24);
+      const lines = 2 + titleLines + (mismatches[c.it.id] ? 1 : 0) + (safeUrl(c.it.url) || mapQuery(c.it.address) ? 1 : 0);
+      c.y = y(c.a) + c.shift;
+      c.top = Math.max(c.y - 15, 0);
+      c.height = Math.max(dur(c.b - c.a) + 15 - c.shift, compact ? 30 : 20 + lines * 17);
+    }
+    cardLanes = Math.max(assignLanes(cards, 5), 1);
+    const next = clamp(avail / cardLanes - 6, Math.min(170, avail), 340);
+    if (Math.abs(next - laneW) < .5) break;
+    laneW = next;
+  }
   track.style.width = px(Math.max(scroller.clientWidth, cardX + cardLanes * (laneW + 6) + 14));
 
   for (const c of cards) {
