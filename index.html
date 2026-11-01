@@ -739,7 +739,7 @@ function updateStatus() {
     rec.dirty && h('span.unsaved', { title: 'Your changes are kept in this browser. Save to update the shared link.' }, 'Unsaved'),
     h('button', { type: 'button', onclick: openShareDialog }, 'Share'),
     h('button.primary', { type: 'button', disabled: saving || !rec.dirty, onclick: quickSave }, saving ? 'Saving…' : 'Save'),
-  ] : [h('button.primary', { type: 'button', onclick: openShareDialog }, 'Save…')]));
+  ] : [h('button.primary', { type: 'button', onclick: openShareDialog }, 'Save…')]).filter(Boolean));
 }
 
 async function quickSave() {
