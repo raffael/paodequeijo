@@ -98,7 +98,7 @@
   .day.alt { background: var(--bg-alt); }
   .day-label { position: sticky; top: 8px; display: block; width: var(--gutter); padding: 8px 6px 0 14px; font-size: 12px; color: var(--text-secondary); }
   .day-label strong { display: block; font-size: 15px; font-weight: 400; }
-  .day-label b { color: var(--text); font-weight: 600; }
+  .day-label b { display: inline-block; width: 2ch; text-align: right; font-variant-numeric: tabular-nums; color: var(--text); font-weight: 600; }
   .tiny .day-label { padding-top: 2px; }
   .tiny .day-label span { display: none; }
   .hour { position: absolute; left: 0; right: 0; border-top: 1px solid #f2f2f7; }
@@ -744,7 +744,7 @@ function renderTimeline() {
     const places = [...new Set(segs.filter(s => s.kind === 'place' && s.a < ms + DAY && s.b > ms).map(s => s.name))];
     const day = h('.day', { className: i % 2 ? 'day alt' : 'day', style: { top: px(y(ms)), height: px(pxPerDay) } },
       h('.day-label', {},
-        h('strong', {}, h('b', {}, fmtDatePart(ms, ['day', 'numeric'])), ` ${fmtDatePart(ms, ['weekday', 'short'])}`,
+        h('strong', {}, h('b', {}, new Date(ms).getUTCDate()), ` ${fmtDatePart(ms, ['weekday', 'short'])}`,
           // The month only shows where it starts, so every date stays unambiguous.
           (i === 0 || new Date(ms).getUTCDate() === 1) && ` ${fmtDatePart(ms, ['month', 'short'])}`),
         h('span', {}, `Day ${i + 1}`), !mobile && places.length > 0 && h('span', {}, ` in ${places.slice(0, 2).join(', ')}`)));
