@@ -783,6 +783,14 @@ function metaNodes(it) {
   return parts.filter(Boolean).flatMap((part, i) => (i ? [', ', part] : [part]));
 }
 
+// "Link · Map" on items that have a web link, an address, or both.
+function itemLinks(it, linkLabel) {
+  const anchor = (href, text) => h('a', { href, target: '_blank', rel: 'noopener noreferrer', onclick: e => e.stopPropagation() }, text);
+  const url = safeUrl(it.url), q = mapQuery(it.address);
+  return [url && anchor(url, linkLabel), q && anchor(mapsLink(q), 'Map')].filter(Boolean)
+    .flatMap((part, i) => (i ? [' · ', part] : [part]));
+}
+
 // Greedy interval packing: each entry takes the first lane it fits in.
 function assignLanes(entries, gap) {
   const laneEnds = [];
@@ -862,7 +870,7 @@ function renderTimeline() {
   for (const s of stays) {
     const place = placeAt(segs, s.a).name;
     const color = place ? placeColor(place) : '#aeaeb2';
-    const link = safeUrl(s.it.url);
+    const links = itemLinks(s.it, 'Link');
     const nights = s.it.until ? Math.round((toMs(s.it.until.slice(0, 10)) - toMs(s.it.at.slice(0, 10))) / DAY) : 0;
     track.append(itemNode('.stay', s.it, {
       left: px(stayX + s.lane * (stayW + 4)), top: px(s.top), width: px(stayW), height: px(s.height),
@@ -871,13 +879,13 @@ function renderTimeline() {
       h('span.stay-icon', {}, iconFor(s.it)),
       headingNodes(s.it),
       !mobile && h('small', {}, nights === 1 ? '1 night' : `${nights} nights`),
-      link && !mobile && h('small', {}, ' ', h('a', { href: link, target: '_blank', rel: 'noopener noreferrer', onclick: e => e.stopPropagation() }, 'Link')))));
+      links.length > 0 && !mobile && h('small', {}, ' ', links))));
   }
 
   // Everything else gets a card, connected to the line by a tick
   const cards = trip.items.filter(i => i.type !== 'stay').map(it => {
     const a = toMs(it.at), b = Math.max(toMs(it.until || it.at), a);
-    const lines = 2 + (headingNodes(it).length > 1 ? 1 : 0) + (mismatches[it.id] ? 1 : 0) + (safeUrl(it.url) ? 1 : 0);
+    const lines = 2 + (headingNodes(it).length > 1 ? 1 : 0) + (mismatches[it.id] ? 1 : 0) + (safeUrl(it.url) || mapQuery(it.address) ? 1 : 0);
     const min = compact ? 30 : 20 + lines * 17;
     return { it, a, y: y(a), top: Math.max(y(a) - 15, 0), height: Math.max(dur(b - a) + 15, min) };
   });
@@ -893,14 +901,14 @@ function renderTimeline() {
     const color = place.name ? placeColor(place.name) : '#aeaeb2';
     const flag = c.it.type === 'start' || c.it.type === 'end';
     const warn = mismatches[c.it.id];
-    const link = safeUrl(c.it.url);
+    const links = itemLinks(c.it, 'Open link');
     track.append(h(`.tick.status-${statusOf(c.it)}`, { style: { left: px(gutter + lineW), top: px(c.y - 1), width: px(x - gutter - lineW), background: color } }));
     track.append(itemNode(flag ? '.card.flag' : '.card', c.it, { left: px(x), top: px(c.top), width: px(laneW), height: px(c.height) },
       h('span.text', {},
         headingNodes(c.it),
         h('span.meta', {}, metaNodes(c.it)),
         warn && h('span.meta.warn', {}, `You're in ${warn} before this`),
-        link && h('span.meta', {}, h('a', { href: link, target: '_blank', rel: 'noopener noreferrer', onclick: e => e.stopPropagation() }, 'Open link')))));
+        links.length > 0 && h('span.meta', {}, links))));
     if (compact) track.lastChild.classList.add('compact');
   }
 
