@@ -246,6 +246,31 @@ const fromMs = ms => new Date(ms).toISOString().slice(0, 16);
 const fmtDay = ms => new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }).format(ms).replace(',', '');
 const fmtDatePart = (ms, part) => new Intl.DateTimeFormat(undefined, { [part[0]]: part[1], timeZone: 'UTC' }).format(ms);
 const fmtTime = ms => new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }).format(ms);
+// Time zones: optional, per flight. Trip times stay local wall-clock; zones only give the real flight time.
+const ZONES = Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone') : [];
+function isZone(zone) {
+  try { new Intl.DateTimeFormat('en-US', { timeZone: zone }); return true; } catch { return false; }
+}
+const zoneFormats = {};
+function wallToUtc(wall, zone) {
+  const format = zoneFormats[zone] ||= new Intl.DateTimeFormat('en-US', {
+    timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric',
+  });
+  const offsetAt = t => {
+    const p = Object.fromEntries(format.formatToParts(t).map(x => [x.type, +x.value]));
+    return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - t;
+  };
+  const guess = toMs(wall);
+  const first = guess - offsetAt(guess);
+  return guess - offsetAt(first); // second pass settles times near a clock change
+}
+function flightMinutes(it) {
+  if (it.type !== 'travel' || !it.fromTz || !it.toTz || !it.until || !isZone(it.fromTz) || !isZone(it.toTz)) return 0;
+  const m = Math.round((wallToUtc(it.until, it.toTz) - wallToUtc(it.at, it.fromTz)) / MIN);
+  return m > 0 ? m : 0;
+}
+const durationFor = it => { const m = flightMinutes(it); return m ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m` : ''; };
+
 const fmtRange = (a, b) => {
   if (b == null) return fmtTime(a);
   if (Math.floor(a / DAY) === Math.floor(b / DAY)) return `${fmtTime(a)} to ${fmtTime(b)}`;
@@ -347,9 +372,10 @@ function cleanTrip(data) {
   const items = data.items.filter(it => it && ITEM_TYPES[it.type] && isTime(it.at)).map(it => {
     const out = { id: String(it.id || uid()), type: it.type, at: it.at };
     if (isTime(it.until)) out.until = it.until;
-    for (const k of ['mode', 'kind', 'from', 'to', 'title', 'location', 'address', 'details', 'url', 'notes']) {
+    for (const k of ['mode', 'kind', 'from', 'to', 'title', 'location', 'address', 'details', 'url', 'notes', 'fromTz', 'toTz']) {
       if (typeof it[k] === 'string') out[k] = it[k];
     }
+    for (const k of ['fromTz', 'toTz']) if (out[k] && !isZone(out[k])) delete out[k];
     if (it.type === 'travel' && !MODES[out.mode]) out.mode = 'car';
     out.status = statusOf(it);
     return out;
@@ -734,7 +760,7 @@ function titleFor(it) {
 }
 function metaFor(it) {
   const a = toMs(it.at), b = it.until ? toMs(it.until) : null;
-  if (it.type === 'travel') return [MODES[it.mode]?.[1], it.details, fmtRange(a, b)].filter(Boolean).join(', ');
+  if (it.type === 'travel') return [MODES[it.mode]?.[1], it.details, fmtRange(a, b), durationFor(it)].filter(Boolean).join(', ');
   if (it.type === 'activity') return [fmtRange(a, b), it.location].filter(Boolean).join(', ');
   return fmtRange(a, b);
 }
@@ -751,7 +777,7 @@ function headingNodes(it) {
 function metaNodes(it) {
   const a = toMs(it.at), b = it.until ? toMs(it.until) : null;
   const typed = text => text && h('b', {}, text);
-  const parts = it.type === 'travel' ? [typed(it.details), fmtRange(a, b)]
+  const parts = it.type === 'travel' ? [typed(it.details), fmtRange(a, b), durationFor(it)]
     : it.type === 'activity' ? [fmtRange(a, b), typed(it.location)]
     : [fmtRange(a, b)];
   return parts.filter(Boolean).flatMap((part, i) => (i ? [', ', part] : [part]));
@@ -969,10 +995,24 @@ function openItemDialog(item) {
   const trip = rec.trip, isNew = !!item.isNew;
   const knownPlaces = [...new Set(trip.items.flatMap(i => [i.from, i.to, i.location]).filter(Boolean))];
   const placesList = h('datalist', { id: 'known-places' }, knownPlaces.map(p => h('option', { value: p })));
-  const bounds = { min: trip.startDate + 'T00:00', max: trip.endDate + 'T23:59' };
+  const zoneOf = {};
+  for (const i of trip.items) {
+    if (i.from && i.fromTz) zoneOf[placeKey(i.from)] = i.fromTz;
+    if (i.to && i.toTz) zoneOf[placeKey(i.to)] = i.toTz;
+  }
+  const zonesList = h('datalist', { id: 'known-zones' }, ZONES.map(z => h('option', { value: z })));
+  // Filling in a place fills its time zone too, unless the zone was typed by hand.
+  const fillZone = (zoneName, place) => {
+    const input = form.elements[zoneName], known = zoneOf[placeKey(place)] || '';
+    if (!input.value || input.value === input.dataset.auto) { input.value = known; input.dataset.auto = known; }
+  };
+  const placeField = (name, label, zoneName) =>
+    text(name, label, item[name], { ...placeOpts, onchange(e) { fillZone(zoneName, e.target.value); } });
+  const zoneField = (name, label, place) =>
+    text(name, label, item[name] || zoneOf[placeKey(place)] || '', { list: 'known-zones', autocomplete: 'off', placeholder: 'Optional, like Europe/Paris', 'data-auto': zoneOf[placeKey(place)] || '' });
   const text = (name, label, value, opts = {}) =>
     h('label.field', {}, label, h('input', { name, value: value || '', ...opts }));
-  const when = (name, label, value) => text(name, label, value, { type: 'datetime-local', required: true, ...bounds });
+  const when = (name, label, value) => text(name, label, value, { type: 'datetime-local', required: true });
   const placeOpts = { required: true, autocomplete: 'off', list: 'known-places' };
   const notes = h('label.field', {}, 'Notes', h('textarea', { name: 'notes', rows: 2, value: item.notes || '' }));
   const addressField = () => {
@@ -985,9 +1025,10 @@ function openItemDialog(item) {
   const fields = {
     travel: () => [
       choiceGroup('mode', MODES, item.mode, 'How you travel'),
-      h('.row', {}, text('from', 'From', item.from, placeOpts), text('to', 'To', item.to, placeOpts)),
+      h('.row', {}, placeField('from', 'From', 'fromTz'), placeField('to', 'To', 'toTz')),
       h('.row', {}, when('at', 'Departs', item.at), when('until', 'Arrives', item.until)),
-      h('p.hint', {}, 'Use local times at each end.'),
+      h('.row', {}, zoneField('fromTz', 'Departure time zone', item.from), zoneField('toTz', 'Arrival time zone', item.to)),
+      h('p.hint', {}, 'Use local times at each end. With both time zones, the card also shows the real travel time.'),
       text('details', 'Details', item.details, { placeholder: 'Flight number, seat, operator' }),
       text('url', 'Link', item.url, { placeholder: 'Optional' }),
     ],
@@ -1018,23 +1059,36 @@ function openItemDialog(item) {
       const data = Object.fromEntries(new FormData(form));
       for (const k of Object.keys(data)) data[k] = data[k].trim();
       const a = toMs(data.at), b = data.until ? toMs(data.until) : null;
-      if (a < tripStart(trip) || (b ?? a) >= tripEnd(trip) || a >= tripEnd(trip)) return fail('Times have to fall within the trip dates. Use Change dates to extend the trip.');
-      if (b != null && b < a && !(item.type === 'travel' && a - b <= DAY)) return fail('The end has to be after the beginning.');
+      for (const z of ['fromTz', 'toTz']) {
+        if (data[z] && !isZone(data[z])) return fail(`"${data[z]}" isn't a time zone name. Pick one from the list, like Europe/Paris.`);
+      }
+      if (item.type === 'travel' && data.fromTz && data.toTz && b != null) {
+        if (wallToUtc(data.until, data.toTz) <= wallToUtc(data.at, data.fromTz)) return fail('Counting the time zones, the arrival is before the departure. Check the times and time zones.');
+      } else if (b != null && b < a && !(item.type === 'travel' && a - b <= DAY)) {
+        return fail('The end has to be after the beginning.');
+      }
+      // Items that spill over the trip dates stretch the trip, within reason.
+      const lo = Math.min(tripStart(trip), Math.floor(Math.min(a, b ?? a) / DAY) * DAY);
+      const hi = Math.max(tripEnd(trip), (Math.floor(Math.max(a, b ?? a) / DAY) + 1) * DAY);
+      if (tripStart(trip) - lo > 7 * DAY || hi - tripEnd(trip) > 7 * DAY) return fail('That is more than a week outside the trip dates. Check the date, or use Change dates if the trip really is that long.');
       if (data.url) {
         const url = safeUrl(data.url);
         if (!url) return fail('Enter the link as a web address, like https://example.com.');
         data.url = url;
       }
+      const stretched = lo < tripStart(trip) || hi > tripEnd(trip);
+      if (stretched) { trip.startDate = fromMs(lo).slice(0, 10); trip.endDate = fromMs(hi - DAY).slice(0, 10); }
       const updated = { id: item.id, type: item.type, ...data };
       const i = trip.items.findIndex(x => x.id === item.id);
       if (i >= 0) trip.items[i] = updated; else trip.items.push(updated);
       dlg.close();
       commit();
       refocus(item.id);
+      if (stretched) toast(`The trip now runs ${fmtDay(tripStart(trip))} to ${fmtDay(tripEnd(trip) - DAY)}.`);
     },
   },
     h('h2', {}, `${isNew ? 'Add' : 'Edit'} ${ITEM_TYPES[item.type][1].toLowerCase()}`),
-    placesList,
+    placesList, zonesList,
     fields[item.type](),
     h('p.choices-label', {}, 'Status'),
     choiceGroup('status', STATUSES, statusOf(item), 'Status'),
