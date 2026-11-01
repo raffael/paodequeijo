@@ -115,6 +115,7 @@
   .seg-label { position: sticky; top: 12px; display: block; margin: 24px auto 12px; writing-mode: vertical-rl; width: 100%; line-height: var(--line-width); font-size: 13px; font-weight: 600; white-space: nowrap; }
   .marker { position: absolute; width: 32px; height: 32px; margin: -16px 0 0 -16px; display: grid; place-items: center; font-size: 16px; border-radius: 50%; background: var(--bg); border: 1.5px solid #8e8e93; box-shadow: 0 1px 2px rgb(0 0 0 / .15); z-index: 4; pointer-events: none; }
 
+  .marker .glyph { width: 18px; height: 18px; margin: 0; vertical-align: top; color: var(--text); }
   .stay, .card { position: absolute; cursor: pointer; }
   .stay { z-index: 2; border-radius: 10px; border: 1.5px solid; padding: 6px 8px; overflow: clip; font-size: 12px; }
   .stay-inner { position: sticky; top: 8px; display: block; }
@@ -196,7 +197,8 @@
     .day-label strong { font-size: 12px; }
     .hour span { display: none; }
     .seg-label { font-size: 12px; }
-    .marker { width: 26px; height: 26px; margin: -13px 0 0 -13px; font-size: 14px; }
+    .marker { width: 26px; height: 26px; margin: -13px 0 0 -13px; }
+    .marker .glyph { width: 15px; height: 15px; }
     .guide i { left: calc(var(--gutter) + 3px); }
     .stay { padding: 3px; text-align: center; }
     .stay-icon { display: block; }
@@ -798,12 +800,6 @@ function setZoom(next, anchorClientY) {
 
 /* ---------- Timeline ---------- */
 
-function iconFor(it) {
-  if (it.type === 'travel') return MODES[it.mode]?.[0] || '🧳';
-  if (it.type === 'activity') return ACTIVITIES[it.kind]?.[0] || '⭐';
-  if (it.type === 'stay') return STAYS[it.kind]?.[0] || '🛏️';
-  return ITEM_TYPES[it.type][0];
-}
 function kindFor(it) {
   if (it.type === 'travel') return MODES[it.mode]?.[1] || 'Travel';
   if (it.type === 'activity') return ACTIVITIES[it.kind]?.[1] || 'Activity';
@@ -939,11 +935,11 @@ function renderTimeline() {
   const lineCenter = gutter + lineW / 2;
   for (const s of segs) {
     if (s.kind !== 'transit') continue;
-    track.append(h(`.marker.status-${statusOf(s.item)}`, { style: { left: px(lineCenter), top: px(y((s.a + s.b) / 2)) } }, iconFor(s.item)));
+    track.append(h(`.marker.status-${statusOf(s.item)}`, { style: { left: px(lineCenter), top: px(y((s.a + s.b) / 2)) } }, glyph(s.item)));
   }
   for (const it of trip.items) {
     if (it.type !== 'start' && it.type !== 'end') continue;
-    track.append(h(`.marker.status-${statusOf(it)}`, { style: { left: px(lineCenter), top: px(y(toMs(it.at))) } }, iconFor(it)));
+    track.append(h(`.marker.status-${statusOf(it)}`, { style: { left: px(lineCenter), top: px(y(toMs(it.at))) } }, glyph(it)));
   }
 
   // Zoomed in far enough, travel and activities also show as capsules right next to the line
