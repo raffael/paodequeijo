@@ -367,6 +367,12 @@ function mapControls(getAddress) {
   return { el: root, update };
 }
 
+// Items get a color from their kind and name, not their times, so moving an item keeps its color.
+function itemColor(it) {
+  const hue = placeHash(`${it.type}|${it.mode || it.kind || ''}|${titleText(it)}`) % 360;
+  return `oklch(${hue > 70 && hue < 140 ? .8 : .7} .15 ${hue})`;
+}
+
 // Same place name, same color, for everyone viewing the trip.
 function placeHash(name) {
   let hash = 0x811c9dc5;
@@ -772,7 +778,7 @@ async function quickSave() {
 /* ---------- Scale ---------- */
 
 const ZOOM_MIN = 40, ZOOM_MAX = 1200, PAD = 24;
-const PILL_ZOOM = 320; // from here on (where hour labels also appear), travel and activities get a capsule
+const PILL_ZOOM = 100; // from here on, travel and activities get a capsule next to the strip
 const zoomToSlider = z => 100 * Math.log(z / ZOOM_MIN) / Math.log(ZOOM_MAX / ZOOM_MIN);
 const sliderToZoom = v => ZOOM_MIN * Math.pow(ZOOM_MAX / ZOOM_MIN, v / 100);
 const dayCount = () => Math.round((tripEnd(rec.trip) - tripStart(rec.trip)) / DAY);
@@ -939,7 +945,7 @@ function renderTimeline() {
   }
 
   // Zoomed in far enough, travel and activities also show as capsules right next to the line
-  const pillW = mobile ? 12 : 16, pillX = gutter + lineW + 6;
+  const pillW = mobile ? 8 : 10, pillX = gutter + lineW + 6;
   const pills = pxPerDay < PILL_ZOOM ? [] : trip.items.filter(i => i.type === 'travel' || i.type === 'activity').map(it => {
     const a = toMs(it.at), b = Math.max(toMs(it.until || it.at), a);
     return { it, a, top: y(a), height: Math.max(dur(b - a), pillW) };
@@ -1003,7 +1009,7 @@ function renderTimeline() {
     const links = itemLinks(c.it, 'Open link');
     const pill = pillOf.get(c.it.id);
     const from = pill ? pillX + pill.lane * (pillW + 4) + pillW : gutter + lineW;
-    track.append(h(`.tick.status-${statusOf(c.it)}${pill ? '.link' : ''}`, { style: { left: px(from), top: px(c.y - 1), width: px(x - from), background: color } }));
+    track.append(h(`.tick.status-${statusOf(c.it)}${pill ? '.link' : ''}`, { style: { left: px(from), top: px(c.y - 1), width: px(x - from), background: pill ? itemColor(c.it) : color } }));
     track.append(itemNode(flag ? '.card.flag' : '.card', c.it, { left: px(x), top: px(c.top), width: px(laneW), height: px(c.height) },
       h('span.text', {},
         headingNodes(c.it),
@@ -1015,17 +1021,13 @@ function renderTimeline() {
 
   const tint = c => `color-mix(in oklch, ${c} 25%, white)`;
   for (const pl of pills) {
-    const it = pl.it, travel = it.type === 'travel';
-    const color = placeColor(placeAt(segs, pl.a).name || '');
-    const c1 = travel ? placeColor(it.from) : color, c2 = travel ? placeColor(it.to) : color;
+    const it = pl.it, color = itemColor(it);
     track.append(h(`.pill.status-${statusOf(it)}`, {
       title: `${titleFor(it)}, ${metaFor(it)}`, 'aria-hidden': 'true',
       onclick() { if (readOnly) openDetails(it); else openItemDialog(it); },
       style: {
         left: px(pillX + pl.lane * (pillW + 4)), top: px(pl.top), width: px(pillW), height: px(pl.height),
-        '--pill-bg': travel ? `linear-gradient(${c1}, ${c2})` : c1,
-        '--pill-tint': travel ? `linear-gradient(${tint(c1)}, ${tint(c2)})` : tint(c1),
-        '--pill-edge': `color-mix(in oklch, ${c2} 60%, black)`,
+        '--pill-bg': color, '--pill-tint': tint(color), '--pill-edge': `color-mix(in oklch, ${color} 60%, black)`,
       },
     }));
   }
