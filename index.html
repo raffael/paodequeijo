@@ -114,22 +114,25 @@
   .stay, .card { position: absolute; cursor: pointer; }
   .stay { z-index: 2; border-radius: 10px; border: 1.5px solid; padding: 6px 8px; overflow: clip; font-size: 12px; }
   .stay-inner { position: sticky; top: 8px; display: block; }
-  .stay-head { display: flex; gap: 5px; }
-  .stay .item-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .stay-icon { display: none; }
+  .stay .item-kind, .stay .item-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .stay small { font-size: 12px; color: var(--text-secondary); }
   .tick { position: absolute; height: 1.5px; z-index: 1; pointer-events: none; }
   .card { z-index: 3; display: flex; gap: 9px; align-items: flex-start; padding: 8px 10px; overflow: hidden; background: var(--bg); border: 1px solid #c7c7cc; border-radius: 10px; box-shadow: 0 1px 2px rgb(0 0 0 / .06); }
   .card.flag { background: var(--accent-tint); border-color: var(--accent); }
-  .card .icon { flex: none; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; font-size: 16px; }
   .card .text { min-width: 0; flex: 1; }
-  .card .item-title, .card .meta { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .item-title { font-size: 13px; font-weight: 400; }
+  .card .item-kind, .card .item-title, .card .meta { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item-kind { display: block; font-size: 12px; font-weight: 400; color: var(--text-secondary); }
+  .item-kind.alone { font-size: 13px; color: var(--text); }
+  .item-title { display: block; font-size: 13px; font-weight: 400; }
   .item-title b { font-weight: 600; }
   .meta b { font-weight: 600; color: var(--text); }
   .card .meta { font-size: 12px; color: var(--text-secondary); }
   .card .warn { color: var(--danger); }
-  .card.compact { padding: 2px 8px; align-items: center; gap: 6px; }
-  .card.compact .icon { width: 22px; height: 22px; font-size: 13px; }
+  .card.compact { padding: 2px 8px; align-items: center; }
+  .card.compact .text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card.compact .item-kind, .card.compact .item-title { display: inline; }
+  .card.compact .item-kind { margin-right: 5px; }
   .card.compact .meta { display: none; }
   .card.status-planned { border: 1.5px dashed #8e8e93; }
   .card.flag.status-planned { border-color: var(--accent); }
@@ -152,7 +155,7 @@
   dialog { width: min(480px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); color: inherit; border: 0; border-radius: 14px; padding: 20px; box-shadow: 0 0 0 .5px rgb(0 0 0 / .1), 0 16px 48px rgb(0 0 0 / .25); }
   dialog::backdrop { background: rgb(0 0 0 / .25); }
   dialog h2 { font-size: 17px; margin-bottom: 14px; }
-  dialog h2.item-title { font-size: 17px; }
+  dialog h2 .item-title, dialog h2 .item-kind.alone { font-size: 17px; }
   dialog h3 { font-size: 13px; font-weight: 600; margin: 18px 0 6px; }
   .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
   .actions .left { margin-right: auto; }
@@ -178,7 +181,8 @@
     .marker { width: 26px; height: 26px; margin: -13px 0 0 -13px; font-size: 14px; }
     .guide i { left: calc(var(--gutter) + 3px); }
     .stay { padding: 3px; text-align: center; }
-    .stay .item-title, .stay small { display: none; }
+    .stay-icon { display: block; }
+    .stay .item-kind, .stay .item-title, .stay small { display: none; }
     .status { display: none; }
   }
 </style>
@@ -679,8 +683,14 @@ function iconFor(it) {
   if (it.type === 'stay') return STAYS[it.kind]?.[0] || '🛏️';
   return ITEM_TYPES[it.type][0];
 }
+function kindFor(it) {
+  if (it.type === 'travel') return MODES[it.mode]?.[1] || 'Travel';
+  if (it.type === 'activity') return ACTIVITIES[it.kind]?.[1] || 'Activity';
+  if (it.type === 'stay') return STAYS[it.kind]?.[1] || 'Stay';
+  return ITEM_TYPES[it.type][1];
+}
 function titleFor(it) {
-  if (it.type === 'travel') return `${it.from} to ${it.to}`;
+  if (it.type === 'travel') return `${it.from} → ${it.to}`;
   if (it.type === 'activity') return it.title || ACTIVITIES[it.kind]?.[1] || 'Activity';
   if (it.type === 'stay') return it.title || STAYS[it.kind]?.[1] || 'Stay';
   return `Trip ${it.type === 'start' ? 'starts' : 'ends'}${it.location ? `: ${it.location}` : ''}`;
@@ -692,20 +702,19 @@ function metaFor(it) {
   return fmtRange(a, b);
 }
 
-// What items show on screen: like titleFor and metaFor, with what the user typed in bold.
-function titleNodes(it) {
+// What items show on screen: the kind in plain text, then what the user typed in bold.
+function headingNodes(it) {
   const b = text => h('b', {}, text);
-  if (it.type === 'travel') return [b(it.from), ' -> ', b(it.to)];
-  if (it.type === 'start' || it.type === 'end') {
-    const label = `Trip ${it.type === 'start' ? 'starts' : 'ends'}`;
-    return it.location ? [`${label}: `, b(it.location)] : [label];
-  }
-  return [it.title ? b(it.title) : titleFor(it)];
+  const typed = it.type === 'travel' ? [b(it.from), ' → ', b(it.to)]
+    : it.type === 'start' || it.type === 'end' ? (it.location ? [b(it.location)] : [])
+    : (it.title ? [b(it.title)] : []);
+  if (!typed.length) return [h('span.item-kind.alone', {}, kindFor(it))];
+  return [h('span.item-kind', {}, kindFor(it)), h('span.item-title', {}, typed)];
 }
 function metaNodes(it) {
   const a = toMs(it.at), b = it.until ? toMs(it.until) : null;
   const typed = text => text && h('b', {}, text);
-  const parts = it.type === 'travel' ? [MODES[it.mode]?.[1], typed(it.details), fmtRange(a, b)]
+  const parts = it.type === 'travel' ? [typed(it.details), fmtRange(a, b)]
     : it.type === 'activity' ? [fmtRange(a, b), typed(it.location)]
     : [fmtRange(a, b)];
   return parts.filter(Boolean).flatMap((part, i) => (i ? [', ', part] : [part]));
@@ -782,7 +791,7 @@ function renderTimeline() {
   // Stays sit in a column right next to the line
   const stays = trip.items.filter(i => i.type === 'stay').map(it => {
     const a = toMs(it.at), b = Math.max(toMs(it.until || it.at), a);
-    return { it, top: y(a), height: Math.max(dur(b - a), 30), a };
+    return { it, top: y(a), height: Math.max(dur(b - a), it.title ? 52 : 34), a };
   });
   const stayLanes = assignLanes(stays, 2);
   const stayW = mobile ? 30 : 136;
@@ -796,7 +805,8 @@ function renderTimeline() {
       left: px(stayX + s.lane * (stayW + 4)), top: px(s.top), width: px(stayW), height: px(s.height),
       'border-color': color, background: `color-mix(in oklch, ${color} 28%, white)`,
     }, h('span.stay-inner', {},
-      h('span.stay-head', {}, iconFor(s.it), h('span.item-title', {}, titleNodes(s.it))),
+      h('span.stay-icon', {}, iconFor(s.it)),
+      headingNodes(s.it),
       !mobile && h('small', {}, nights === 1 ? '1 night' : `${nights} nights`),
       link && !mobile && h('small', {}, ' ', h('a', { href: link, target: '_blank', rel: 'noopener noreferrer', onclick: e => e.stopPropagation() }, 'Link')))));
   }
@@ -804,7 +814,8 @@ function renderTimeline() {
   // Everything else gets a card, connected to the line by a tick
   const cards = trip.items.filter(i => i.type !== 'stay').map(it => {
     const a = toMs(it.at), b = Math.max(toMs(it.until || it.at), a);
-    const min = compact ? 30 : it.type === 'start' || it.type === 'end' ? 52 : 58;
+    const lines = 2 + (headingNodes(it).length > 1 ? 1 : 0) + (mismatches[it.id] ? 1 : 0) + (safeUrl(it.url) ? 1 : 0);
+    const min = compact ? 30 : 20 + lines * 17;
     return { it, a, y: y(a), top: Math.max(y(a) - 15, 0), height: Math.max(dur(b - a) + 15, min) };
   });
   const cardLanes = Math.max(assignLanes(cards, 5), 1);
@@ -822,9 +833,8 @@ function renderTimeline() {
     const link = safeUrl(c.it.url);
     track.append(h(`.tick.status-${statusOf(c.it)}`, { style: { left: px(gutter + lineW), top: px(c.y - 1), width: px(x - gutter - lineW), background: color } }));
     track.append(itemNode(flag ? '.card.flag' : '.card', c.it, { left: px(x), top: px(c.top), width: px(laneW), height: px(c.height) },
-      h('span.icon', { style: { background: flag ? 'transparent' : color } }, iconFor(c.it)),
       h('span.text', {},
-        h('span.item-title', {}, titleNodes(c.it)),
+        headingNodes(c.it),
         h('span.meta', {}, metaNodes(c.it)),
         warn && h('span.meta.warn', {}, `You're in ${warn} before this`),
         link && h('span.meta', {}, h('a', { href: link, target: '_blank', rel: 'noopener noreferrer', onclick: e => e.stopPropagation() }, 'Open link')))));
@@ -843,7 +853,7 @@ function renderTimeline() {
 function itemNode(spec, item, style, ...kids) {
   const open = () => (readOnly ? openDetails(item) : openItemDialog(item));
   return h(`${spec}.status-${statusOf(item)}`, {
-    style, tabIndex: 0, role: 'button', 'data-id': item.id, 'aria-label': `${titleFor(item)}, ${metaFor(item)}, ${STATUSES[statusOf(item)][1]}`,
+    style, tabIndex: 0, role: 'button', 'data-id': item.id, 'aria-label': `${titleFor(item).replace(' → ', ' to ')}, ${metaFor(item)}, ${STATUSES[statusOf(item)][1]}`,
     onclick: open,
     onkeydown(e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } },
   }, ...kids);
@@ -1007,7 +1017,7 @@ function refocus(id) {
 function openDetails(item) {
   const link = safeUrl(item.url);
   const dlg = openDialog(h('div', {},
-    h('h2.item-title', {}, `${iconFor(item)} `, titleNodes(item)),
+    h('h2', {}, headingNodes(item)),
     h('p.meta', {}, metaNodes(item)),
     h('p', {}, STATUSES[statusOf(item)].join(' ')),
     item.notes && h('p.notes', {}, item.notes),
