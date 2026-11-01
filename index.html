@@ -1,0 +1,1042 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- The decryption key lives in the URL, so the page may only talk to GitHub and loads nothing external. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://api.github.com https://gist.githubusercontent.com; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>paodequeijo</title>
+<style>
+  :root {
+    color-scheme: light;
+    --sky: #e8f4f7;
+    --sky-light: #f4fafb;
+    --rule: #cbe1e7;
+    --ink: #17394a;
+    --ink-soft: #4e6d7b;
+    --sun: #ffc83d;
+    --danger: #b93a2b;
+    --white: #fff;
+    --gutter: 130px;
+    --line-width: 54px;
+    --font-system: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, sans-serif;
+    --font-rounded: ui-rounded, "SF Pro Rounded", var(--font-system);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font: 15px/1.4 var(--font-system);
+    color: var(--ink);
+    background: var(--sky-light);
+  }
+  #app { height: 100dvh; display: flex; flex-direction: column; }
+  h1, h2 { margin: 0; line-height: 1.2; }
+  a { color: inherit; }
+  :focus-visible { outline: 3px solid #1b7fa6; outline-offset: 2px; }
+
+  button, .button {
+    font: inherit; color: var(--ink); cursor: pointer; text-decoration: none; display: inline-block;
+    padding: 7px 13px; border-radius: 10px; border: 1px solid var(--rule); background: var(--white);
+  }
+  button:hover, .button:hover { background: var(--sky); }
+  button:disabled { opacity: .5; cursor: default; }
+  button.primary { background: var(--sun); border-color: #e8ae1c; font-weight: 600; }
+  button.primary:hover { background: #ffd566; }
+  button.danger { color: var(--danger); }
+  button.plain { border-color: transparent; background: transparent; }
+  input, textarea {
+    font: inherit; color: inherit; width: 100%; padding: 8px 10px;
+    border: 1px solid #a9c8d2; border-radius: 8px; background: var(--white);
+  }
+  label.field { display: block; margin-bottom: 12px; font-weight: 600; font-size: 14px; }
+  label.field input, label.field textarea { margin-top: 4px; font-weight: 400; font-size: 15px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .row > label.field { flex: 1 1 180px; }
+  .error { color: var(--danger); font-weight: 600; margin: 0 0 10px; }
+  .hint { color: var(--ink-soft); font-size: 13.5px; margin: 0 0 12px; }
+
+  /* Home */
+  .home { overflow: auto; flex: 1; display: flex; justify-content: center; padding: 40px 20px; }
+  .home-inner { width: 100%; max-width: 480px; }
+  .home h1 { font-family: var(--font-rounded); font-size: 34px; margin-bottom: 20px; }
+  .home h2 { font-size: 18px; margin: 28px 0 10px; }
+  .panel { background: var(--white); border: 1px solid var(--rule); border-radius: 14px; padding: 18px; }
+  .saved-trip { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .saved-trip .open { flex: 1; text-align: left; min-width: 0; }
+  .saved-trip small { display: block; color: var(--ink-soft); }
+
+  /* Toolbar */
+  .toolbar {
+    display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center;
+    padding: 10px 14px; background: var(--white); border-bottom: 1px solid var(--rule);
+  }
+  .toolbar .title { flex: 1 1 160px; min-width: 120px; font-size: 19px; font-weight: 700; border-color: transparent; padding: 4px 8px; }
+  .toolbar .title:hover { border-color: var(--rule); }
+  .status { color: var(--ink-soft); font-size: 13px; }
+  .zoom { display: flex; align-items: center; gap: 4px; }
+  .zoom input { width: 110px; padding: 0; accent-color: var(--ink); }
+  .zoom button { padding: 3px 10px; }
+  .notice { padding: 8px 14px; background: #fff3cc; border-bottom: 1px solid #efd98a; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+
+  /* Timeline */
+  .scroller { flex: 1; overflow: auto; position: relative; font-family: var(--font-rounded); }
+  .track { position: relative; }
+  .day { position: absolute; left: 0; right: 0; border-top: 1px solid var(--rule); background: var(--sky-light); }
+  .day.alt { background: var(--sky); }
+  .day-label { position: sticky; top: 6px; display: block; width: var(--gutter); padding: 6px 4px 0 12px; font-size: 13px; color: var(--ink-soft); }
+  .day-label strong { display: block; color: var(--ink); font-size: 14.5px; }
+  .tiny .day-label { padding-top: 2px; }
+  .tiny .day-label span { display: none; }
+  .hour { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--rule); }
+  .hour span { position: absolute; left: calc(var(--gutter) - 42px); top: 1px; font-size: 11px; color: var(--ink-soft); }
+
+  .line { position: absolute; left: var(--gutter); width: var(--line-width); border-radius: 27px; overflow: clip; z-index: 2; cursor: copy; }
+  .readonly .line { cursor: default; }
+  .seg { position: absolute; left: 0; right: 0; }
+  .seg.empty { background: repeating-linear-gradient(135deg, #d4e5ea 0 8px, #e2eff2 8px 16px); }
+  .seg-label { position: sticky; top: 12px; display: block; margin: 24px auto 12px; writing-mode: vertical-rl; width: 100%; line-height: var(--line-width); font-weight: 700; white-space: nowrap; }
+  .marker { position: absolute; width: 34px; height: 34px; margin: -17px 0 0 -17px; display: grid; place-items: center; font-size: 18px; border-radius: 50%; background: var(--white); border: 2px solid var(--ink); z-index: 4; pointer-events: none; }
+
+  .stay, .card { position: absolute; cursor: pointer; }
+  .stay { z-index: 2; border-radius: 10px; border: 2px solid; padding: 6px 8px; overflow: clip; font-size: 13.5px; }
+  .stay-inner { position: sticky; top: 8px; display: block; }
+  .stay-head { display: flex; gap: 5px; }
+  .stay b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tick { position: absolute; height: 2px; z-index: 1; pointer-events: none; }
+  .card { z-index: 3; display: flex; gap: 9px; padding: 8px 10px; overflow: hidden; background: var(--white); border: 1px solid #b9d4dc; border-radius: 12px; box-shadow: 0 1px 3px rgb(23 57 74 / .15); }
+  .card:hover, .stay:hover { box-shadow: 0 2px 8px rgb(23 57 74 / .3); }
+  .card.flag { background: var(--sun); border-color: #e8ae1c; }
+  .card .icon { flex: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; font-size: 18px; }
+  .card .text { min-width: 0; flex: 1; }
+  .card b, .card .meta { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card .meta { font-size: 13px; color: var(--ink-soft); }
+  .card .warn { color: var(--danger); }
+  .card.flag .meta { color: var(--ink); }
+  .card.compact { padding: 2px 8px; align-items: center; gap: 6px; }
+  .card.compact .icon { width: 22px; height: 22px; font-size: 14px; }
+  .card.compact .meta { display: none; }
+
+  .guide { position: absolute; left: 0; right: 0; height: 0; border-top: 2px dashed var(--ink); z-index: 5; pointer-events: none; }
+  .guide i { position: absolute; left: calc(var(--gutter) + var(--line-width) / 2 - 14px); top: -15px; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; background: var(--sun); border: 2px solid var(--ink); font-size: 18px; font-weight: 700; line-height: 1; }
+  .guide span { position: absolute; left: calc(var(--gutter) + var(--line-width) + 8px); top: -30px; padding: 2px 8px; background: var(--ink); color: var(--white); border-radius: 7px; font-size: 13px; white-space: nowrap; }
+  .empty-hint { position: absolute; z-index: 3; max-width: 300px; color: var(--ink-soft); font-size: 16px; pointer-events: none; }
+
+  .menu { position: fixed; z-index: 20; width: 220px; padding: 8px; background: var(--white); border: 1px solid var(--rule); border-radius: 12px; box-shadow: 0 6px 22px rgb(23 57 74 / .3); }
+  .menu p { margin: 2px 6px 8px; font-size: 13px; color: var(--ink-soft); }
+  .menu button { display: block; width: 100%; text-align: left; border: 0; }
+
+  dialog { width: min(520px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); color: inherit; border: 0; border-radius: 16px; padding: 20px; box-shadow: 0 12px 40px rgb(23 57 74 / .4); }
+  dialog::backdrop { background: rgb(23 57 74 / .4); }
+  dialog h2 { font-size: 21px; margin-bottom: 14px; }
+  dialog h3 { font-size: 15px; margin: 18px 0 8px; }
+  .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+  .actions .left { margin-right: auto; }
+  .choices { border: 0; padding: 0; margin: 0 0 14px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .choices label { cursor: pointer; }
+  .choices input { position: absolute; width: 1px; opacity: 0; }
+  .choices span { display: block; padding: 5px 10px; border: 1px solid var(--rule); border-radius: 18px; font-size: 14px; }
+  .choices input:checked + span { background: var(--sun); border-color: #e8ae1c; font-weight: 600; }
+  .choices input:focus-visible + span { outline: 3px solid #1b7fa6; }
+  .notes { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+  .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 30; display: flex; gap: 10px; align-items: center; padding: 8px 14px; color: var(--white); background: var(--ink); border-radius: 10px; }
+  .toast button { padding: 2px 8px; }
+
+  @media (max-width: 640px) {
+    :root { --gutter: 62px; --line-width: 30px; }
+    .day-label { padding-left: 6px; font-size: 11px; }
+    .day-label strong { font-size: 12px; }
+    .hour span { display: none; }
+    .seg-label { font-size: 12px; }
+    .marker { width: 26px; height: 26px; margin: -13px 0 0 -13px; font-size: 14px; }
+    .guide i { left: calc(var(--gutter) + 1px); }
+    .stay { padding: 3px; text-align: center; }
+    .stay b, .stay small { display: none; }
+    .status { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+'use strict';
+
+/* ---------- Choices ---------- */
+
+const MODES = {
+  flight: ['✈️', 'Flight'], car: ['🚗', 'Car'], pickup: ['🚐', 'Van or Uber'], boat: ['⛴️', 'Boat'],
+  train: ['🚆', 'Train'], walk: ['🚶', 'Walking'], transit: ['🚌', 'Public transport'],
+};
+const ACTIVITIES = {
+  hike: ['🥾', 'Hike'], dinner: ['🍽️', 'Dinner'], sightseeing: ['🏛️', 'Sightseeing'],
+  beach: ['🏖️', 'Beach'], event: ['🎟️', 'Event'], other: ['⭐', 'Other'],
+};
+const STAYS = { home: ['🏠', 'Home'], hotel: ['🏨', 'Hotel'], airbnb: ['🏡', 'Airbnb'] };
+const ITEM_TYPES = {
+  travel: ['🧳', 'Travel'], activity: ['⭐', 'Activity'], stay: ['🛏️', 'Stay'],
+  start: ['🚩', 'Trip start'], end: ['🏁', 'Trip end'],
+};
+
+/* ---------- DOM and small helpers ---------- */
+
+// All text goes through text nodes, so trip data from a link or file can't inject HTML.
+function h(spec, attrs, ...kids) {
+  const [tag, ...classes] = spec.split('.');
+  const el = document.createElement(tag || 'div');
+  if (classes.length) el.className = classes.join(' ');
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+    else if (k === 'style') for (const [p, val] of Object.entries(v)) el.style.setProperty(p, val);
+    else if (k in el && k !== 'list' && k !== 'form') el[k] = v;
+    else el.setAttribute(k, v);
+  }
+  el.append(...kids.flat().filter(c => c != null && c !== false));
+  return el;
+}
+const px = n => n + 'px';
+const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+const app = document.getElementById('app');
+
+const MIN = 60000, HOUR = 60 * MIN, DAY = 24 * HOUR;
+// Times are wall-clock strings ("2026-12-01T09:30"). Doing the math in UTC keeps every day exactly 24h.
+const toMs = s => {
+  const [, y, m, d, hh = 0, mm = 0] = s.match(/^(\d{4})-(\d\d)-(\d\d)(?:T(\d\d):(\d\d))?/).map(x => x && +x);
+  return Date.UTC(y, m - 1, d, hh, mm);
+};
+const fromMs = ms => new Date(ms).toISOString().slice(0, 16);
+const fmtDay = ms => new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }).format(ms);
+const fmtTime = ms => new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }).format(ms);
+const fmtRange = (a, b) => {
+  if (b == null) return fmtTime(a);
+  if (Math.floor(a / DAY) === Math.floor(b / DAY)) return `${fmtTime(a)} to ${fmtTime(b)}`;
+  return `${fmtDay(a)} ${fmtTime(a)} to ${fmtDay(b)} ${fmtTime(b)}`;
+};
+const placeKey = s => (s || '').trim().toLowerCase();
+const uid = () => crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2);
+
+function safeUrl(u) {
+  if (!u) return '';
+  try {
+    const url = new URL(/^[a-z][a-z0-9+.-]*:/i.test(u) ? u : 'https://' + u);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
+  } catch { return null; }
+}
+
+// Same place name, same color, for everyone viewing the trip.
+function placeHash(name) {
+  let hash = 0x811c9dc5;
+  for (const ch of placeKey(name)) hash = Math.imul(hash ^ ch.codePointAt(0), 0x01000193);
+  hash = Math.imul(hash ^ (hash >>> 13), 0x5bd1e995);
+  return (hash ^ (hash >>> 15)) >>> 0;
+}
+// A hash alone can give two places nearly the same color, so nudge hues that land too close within a trip.
+let placeHues = new Map();
+function assignPlaceHues(segs) {
+  placeHues = new Map();
+  const names = segs.flatMap(s => (s.kind === 'transit' ? [s.from, s.to] : [s.name])).filter(Boolean);
+  for (const name of names) {
+    const key = placeKey(name);
+    if (placeHues.has(key)) continue;
+    let hue = placeHash(name) % 360;
+    const tooClose = h => [...placeHues.values()].some(u => Math.min(Math.abs(u - h), 360 - Math.abs(u - h)) < 35);
+    for (let tries = 0; tries < 10 && tooClose(hue); tries++) hue = (hue + 37) % 360;
+    placeHues.set(key, hue);
+  }
+}
+function placeColor(name) {
+  const hue = placeHues.get(placeKey(name)) ?? placeHash(name) % 360;
+  const lightness = hue > 70 && hue < 140 ? 0.84 : 0.76; // yellows and greens turn muddy when darker
+  return `oklch(${lightness} 0.13 ${hue})`;
+}
+
+function toast(message, action) {
+  document.querySelector('.toast')?.remove();
+  const el = h('.toast', { role: 'status' }, message,
+    action && h('button', { type: 'button', onclick() { el.remove(); action.run(); } }, action.label));
+  document.body.append(el);
+  setTimeout(() => el.remove(), action ? 8000 : 3500);
+}
+
+function openDialog(content) {
+  const dlg = h('dialog', { onclose() { dlg.remove(); } }, content);
+  document.body.append(dlg);
+  dlg.showModal();
+  return dlg;
+}
+
+/* ---------- Trip data and browser storage ---------- */
+
+function cleanTrip(data) {
+  const isDay = s => typeof s === 'string' && /^\d{4}-\d\d-\d\d$/.test(s);
+  const isTime = s => typeof s === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d$/.test(s);
+  if (!data || !isDay(data.startDate) || !isDay(data.endDate) || !Array.isArray(data.items)) throw new Error('not a trip');
+  const span = toMs(data.endDate) - toMs(data.startDate);
+  if (span < 0 || span > 730 * DAY) throw new Error('bad dates');
+  const items = data.items.filter(it => it && ITEM_TYPES[it.type] && isTime(it.at)).map(it => {
+    const out = { id: String(it.id || uid()), type: it.type, at: it.at };
+    if (isTime(it.until)) out.until = it.until;
+    for (const k of ['mode', 'kind', 'from', 'to', 'title', 'location', 'details', 'url', 'notes']) {
+      if (typeof it[k] === 'string') out[k] = it[k];
+    }
+    if (it.type === 'travel' && !MODES[out.mode]) out.mode = 'car';
+    return out;
+  });
+  return { title: String(data.title || 'My trip'), startDate: data.startDate, endDate: data.endDate, items };
+}
+
+const STORE_KEY = 'paodequeijo.trips', TOKEN_KEY = 'paodequeijo.github-token', ZOOM_KEY = 'paodequeijo.zoom';
+const memory = {};
+const storage = {
+  get(k) { try { return localStorage.getItem(k); } catch { return memory[k] ?? null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch { memory[k] = v; } },
+  remove(k) { try { localStorage.removeItem(k); } catch { delete memory[k]; } },
+};
+function loadRecords() {
+  try { return JSON.parse(storage.get(STORE_KEY)) || {}; } catch { return {}; }
+}
+function saveRecord(rec) {
+  const all = loadRecords();
+  all[rec.id] = { ...rec, savedAt: Date.now() };
+  storage.set(STORE_KEY, JSON.stringify(all));
+}
+function deleteRecord(id) {
+  const all = loadRecords();
+  delete all[id];
+  storage.set(STORE_KEY, JSON.stringify(all));
+}
+
+/* ---------- Encryption: AES-GCM, with the key only in the link's #fragment ---------- */
+
+const toB64 = bytes => btoa(Array.from(bytes, b => String.fromCharCode(b)).join(''));
+const fromB64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const toB64Url = bytes => toB64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const fromB64Url = s => fromB64(s.replace(/-/g, '+').replace(/_/g, '/'));
+const newKey = () => toB64Url(crypto.getRandomValues(new Uint8Array(32)));
+const importKey = key => crypto.subtle.importKey('raw', fromB64Url(key), 'AES-GCM', false, ['encrypt', 'decrypt']);
+
+async function encryptTrip(trip, key) {
+  const iv = crypto.getRandomValues(new Uint8Array(12)); // must be new for every save
+  const data = new TextEncoder().encode(JSON.stringify(trip));
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await importKey(key), data);
+  return JSON.stringify({ version: 1, iv: toB64(iv), ciphertext: toB64(new Uint8Array(ciphertext)) });
+}
+async function decryptTrip(text, key) {
+  const box = JSON.parse(text);
+  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(box.iv) }, await importKey(key), fromB64(box.ciphertext));
+  return cleanTrip(JSON.parse(new TextDecoder().decode(plain)));
+}
+
+/* ---------- GitHub Gist storage ---------- */
+
+const GIST_FILE = 'trip.json';
+
+async function github(method, path, token, body) {
+  let res;
+  try {
+    res = await fetch('https://api.github.com' + path, {
+      method,
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/vnd.github+json',
+        ...(token && { Authorization: 'Bearer ' + token }),
+        ...(body && { 'Content-Type': 'application/json' }),
+      },
+      body: body && JSON.stringify(body),
+    });
+  } catch { throw new Error("Can't reach GitHub. Check your connection and try again."); }
+  if (res.ok) return res.json();
+  if (res.status === 401) throw new Error('GitHub rejected this token. Create a new one with the gist permission.');
+  if (res.status === 403 || res.status === 429) throw new Error('GitHub is limiting requests from this network, or the token lacks the gist permission. Try again in an hour.');
+  if (res.status === 404) throw new Error(token
+    ? "GitHub can't find this trip for your account. Only the person who first saved it can change it."
+    : "This trip isn't on GitHub any more. Ask for a new link.");
+  throw new Error(`GitHub returned an error (${res.status}). Try again.`);
+}
+
+async function saveToGitHub(rec, token) {
+  rec.key = rec.key || newKey();
+  const files = { [GIST_FILE]: { content: await encryptTrip(rec.trip, rec.key) } };
+  let gist;
+  if (rec.gistId) {
+    const current = await github('GET', `/gists/${rec.gistId}`, token);
+    if (rec.gistUpdatedAt && current.updated_at !== rec.gistUpdatedAt &&
+        !confirm('This trip was changed on GitHub since you last opened it, possibly from another device. Replace that version with yours?')) {
+      return false;
+    }
+    gist = await github('PATCH', `/gists/${rec.gistId}`, token, { files });
+  } else {
+    gist = await github('POST', '/gists', token, { description: '', public: false, files });
+  }
+  rec.gistId = gist.id;
+  rec.gistUpdatedAt = gist.updated_at;
+  rec.dirty = false;
+  saveRecord(rec);
+  return true;
+}
+
+async function loadFromGitHub(gistId, key) {
+  const gist = await github('GET', `/gists/${gistId}`);
+  const file = gist.files[GIST_FILE];
+  if (!file) throw new Error("This link doesn't point to a trip.");
+  let text = file.content;
+  if (file.truncated) text = await (await fetch(file.raw_url)).text();
+  try {
+    return { trip: await decryptTrip(text, key), updatedAt: gist.updated_at };
+  } catch { throw new Error("This link's key doesn't open the trip. Ask for the full link, including everything after the #."); }
+}
+
+const shareLink = rec => `${location.origin}${location.pathname}?trip=${rec.gistId}#${rec.key}`;
+
+/* ---------- Where am I? Works out the line's segments from start, travel and end items ---------- */
+
+const tripStart = trip => toMs(trip.startDate);
+const tripEnd = trip => toMs(trip.endDate) + DAY;
+
+function computeSegments(trip) {
+  const T0 = tripStart(trip), T1 = tripEnd(trip);
+  const start = trip.items.find(i => i.type === 'start');
+  const end = trip.items.find(i => i.type === 'end');
+  const travels = trip.items.filter(i => i.type === 'travel').sort((a, b) => toMs(a.at) - toMs(b.at));
+  let segs = [], pos = T0, current = null;
+  const mismatches = {};
+  const stayUntil = (b) => { if (b > pos) segs.push(current ? { kind: 'place', name: current, a: pos, b } : { kind: 'empty', a: pos, b }); };
+
+  if (start) {
+    pos = clamp(toMs(start.at), T0, T1);
+    if (pos > T0) segs.push({ kind: 'empty', outside: true, a: T0, b: pos });
+    current = start.location;
+  } else if (travels.length) {
+    current = travels[0].from;
+  }
+  for (const tr of travels) {
+    const a = Math.max(toMs(tr.at), pos);
+    // Flying west can land "before" take-off in local time, so the line uses the later of the two.
+    const b = Math.min(Math.max(toMs(tr.until || tr.at), a), T1);
+    if (current && placeKey(current) !== placeKey(tr.from)) mismatches[tr.id] = current;
+    stayUntil(a);
+    segs.push({ kind: 'transit', item: tr, from: tr.from, to: tr.to, a, b });
+    current = tr.to;
+    pos = b;
+  }
+  stayUntil(T1);
+  if (end) {
+    const e = clamp(toMs(end.at), T0, T1);
+    segs = segs.filter(s => s.a < e).map(s => ({ ...s, b: Math.min(s.b, e) }));
+    if (e < T1) segs.push({ kind: 'empty', outside: true, a: e, b: T1 });
+  }
+  return { segs, mismatches };
+}
+
+function placeAt(segs, t) {
+  const seg = segs.find(s => s.a <= t && t < s.b);
+  if (!seg || seg.kind === 'empty') return { name: '', outside: seg?.outside };
+  return seg.kind === 'transit' ? { name: seg.to, transit: true } : { name: seg.name };
+}
+
+/* ---------- App state and pages ---------- */
+
+let rec = null, readOnly = false, scroller = null, zoomInput = null, statusEl = null;
+let pxPerDay = clamp(+storage.get(ZOOM_KEY) || 200, 40, 1200);
+
+function navigate(search) {
+  history.pushState(null, '', location.pathname + search);
+  route();
+}
+
+function route() {
+  document.querySelector('.menu')?.remove();
+  const params = new URLSearchParams(location.search);
+  const shared = params.get('trip');
+  if (shared) return openShared(shared, location.hash.slice(1));
+  const record = loadRecords()[params.get('edit')];
+  if (record) return showTrip(record, false);
+  showHome();
+}
+
+function createTrip(trip) {
+  const record = { id: uid(), trip, dirty: true };
+  saveRecord(record);
+  navigate('?edit=' + record.id);
+}
+
+function pickTripFile() {
+  const input = h('input', {
+    type: 'file', accept: '.json,application/json',
+    async onchange() {
+      try { createTrip(cleanTrip(JSON.parse(await input.files[0].text()))); }
+      catch { toast("That file isn't a paodequeijo trip."); }
+    },
+  });
+  input.click();
+}
+
+function showHome() {
+  document.title = 'paodequeijo';
+  rec = null;
+  const error = h('p.error', { hidden: true });
+  const title = h('input', { required: true, placeholder: 'Summer in Portugal' });
+  const first = h('input', { type: 'date', required: true });
+  const last = h('input', { type: 'date', required: true });
+  const origin = h('input', { required: true, placeholder: 'Home, Berlin, wherever you set off' });
+  const form = h('form.panel', {
+    onsubmit(e) {
+      e.preventDefault();
+      if (last.value < first.value) { error.textContent = 'The last day has to be on or after the first day.'; error.hidden = false; return; }
+      const start = { id: uid(), type: 'start', at: first.value + 'T00:00', location: origin.value.trim() };
+      createTrip({ title: title.value.trim(), startDate: first.value, endDate: last.value, items: [start] });
+    },
+  },
+    h('label.field', {}, 'Trip name', title),
+    h('.row', {}, h('label.field', {}, 'First day', first), h('label.field', {}, 'Last day', last)),
+    h('label.field', {}, 'Where do you start from?', origin),
+    error,
+    h('button.primary', { type: 'submit' }, 'Create trip'));
+
+  const records = Object.values(loadRecords()).sort((a, b) => b.savedAt - a.savedAt);
+  app.replaceChildren(h('.home', {}, h('.home-inner', {},
+    h('h1', {}, '🧳 Where to next?'),
+    form,
+    h('p', {}, h('button.plain', { type: 'button', onclick: pickTripFile }, 'Open a trip file')),
+    records.length > 0 && h('h2', {}, 'Your trips'),
+    records.map(r => h('.saved-trip', {},
+      h('button.open', { type: 'button', onclick() { navigate('?edit=' + r.id); } },
+        r.trip.title, h('small', {}, `${fmtDay(toMs(r.trip.startDate))} to ${fmtDay(toMs(r.trip.endDate))}`)),
+      h('button.danger', {
+        type: 'button', 'aria-label': `Delete ${r.trip.title}`,
+        onclick() {
+          const note = r.gistId ? ' Its shared link keeps working.' : '';
+          if (confirm(`Delete "${r.trip.title}" from this browser?${note}`)) { deleteRecord(r.id); showHome(); }
+        },
+      }, 'Delete'))),
+  )));
+}
+
+async function openShared(gistId, key) {
+  app.replaceChildren(h('.home', {}, h('p', {}, 'Opening trip…')));
+  const fail = message => app.replaceChildren(h('.home', {}, h('.home-inner', {},
+    h('h1', {}, "This trip can't be opened"), h('p', {}, message),
+    h('button', { type: 'button', onclick() { navigate(''); } }, 'Go to my trips'))));
+  if (!/^[0-9a-f]{20,40}$/i.test(gistId)) return fail("This link isn't complete. Ask for the full link.");
+  if (!key) return fail('This link is missing the part after the #, which unlocks the trip. Ask for the full link.');
+  if (!crypto.subtle) return fail('This browser can only open trips over https.');
+  try {
+    const { trip, updatedAt } = await loadFromGitHub(gistId, key);
+    showTrip({ id: null, trip, gistId, key, gistUpdatedAt: updatedAt, dirty: false }, true);
+  } catch (err) { fail(err.message); }
+}
+
+function editSharedTrip(viewed) {
+  const existing = Object.values(loadRecords()).find(r => r.gistId === viewed.gistId);
+  if (existing?.dirty) {
+    navigate('?edit=' + existing.id);
+    toast('Opened your unsaved version of this trip.');
+    return;
+  }
+  const record = { ...viewed, id: existing?.id || uid() };
+  saveRecord(record);
+  navigate('?edit=' + record.id);
+}
+
+function showTrip(record, viewOnly) {
+  rec = record;
+  readOnly = viewOnly;
+  document.title = `${rec.trip.title} | paodequeijo`;
+  zoomInput = h('input', {
+    type: 'range', min: 0, max: 100, value: zoomToSlider(pxPerDay), 'aria-label': 'Timeline scale',
+    oninput() { setZoom(sliderToZoom(+zoomInput.value)); },
+  });
+  statusEl = h('span.status');
+  scroller = h('.scroller', { tabIndex: 0, 'aria-label': 'Trip timeline' });
+  scroller.addEventListener('wheel', e => {
+    if (!e.ctrlKey && !e.metaKey) return; // trackpad pinch arrives as ctrl+wheel
+    e.preventDefault();
+    setZoom(pxPerDay * Math.exp(-e.deltaY * 0.01), e.clientY);
+  }, { passive: false });
+
+  app.replaceChildren(...[
+    h('.toolbar', {},
+      h('button.plain', { type: 'button', 'aria-label': 'Back to my trips', onclick() { navigate(''); } }, '🧳'),
+      readOnly
+        ? h('strong', { style: { 'font-size': '19px', flex: '1 1 160px' } }, rec.trip.title)
+        : h('input.title', {
+            value: rec.trip.title, 'aria-label': 'Trip name',
+            onchange(e) { rec.trip.title = e.target.value.trim() || 'My trip'; e.target.value = rec.trip.title; commit(); },
+          }),
+      !readOnly && h('button', { type: 'button', onclick: openDatesDialog }, 'Change dates'),
+      statusEl,
+      h('.zoom', {},
+        h('button', { type: 'button', 'aria-label': 'Zoom out', onclick() { setZoom(pxPerDay / 1.4); } }, '−'),
+        zoomInput,
+        h('button', { type: 'button', 'aria-label': 'Zoom in', onclick() { setZoom(pxPerDay * 1.4); } }, '+')),
+      !readOnly && h('button', {
+        type: 'button',
+        onclick(e) {
+          const r = e.currentTarget.getBoundingClientRect();
+          const mid = (scroller.scrollTop + scroller.clientHeight / 2 - PAD) / pxPerDay;
+          const day = clamp(Math.floor(mid), 0, dayCount() - 1);
+          openAddMenu(tripStart(rec.trip) + day * DAY + 12 * HOUR, r.left, r.bottom + 6);
+        },
+      }, 'Add'),
+      !readOnly && h('button.primary', { type: 'button', onclick: openShareDialog }, 'Save and share')),
+    readOnly && h('.notice', {}, 'You’re viewing this trip. Click anything to see its details.',
+      h('button', { type: 'button', onclick() { editSharedTrip(rec); } }, 'Edit this trip')),
+    scroller,
+  ].filter(Boolean));
+  app.classList.toggle('readonly', readOnly);
+  renderTimeline();
+  updateStatus();
+}
+
+function commit() {
+  rec.dirty = true;
+  saveRecord(rec);
+  renderTimeline();
+  updateStatus();
+}
+
+function updateStatus() {
+  if (!statusEl) return;
+  statusEl.textContent = readOnly ? '' :
+    !rec.gistId ? 'Saved in this browser' :
+    rec.dirty ? 'Changes not shared yet' : 'Shared link is up to date';
+}
+
+/* ---------- Scale ---------- */
+
+const ZOOM_MIN = 40, ZOOM_MAX = 1200, PAD = 24;
+const zoomToSlider = z => 100 * Math.log(z / ZOOM_MIN) / Math.log(ZOOM_MAX / ZOOM_MIN);
+const sliderToZoom = v => ZOOM_MIN * Math.pow(ZOOM_MAX / ZOOM_MIN, v / 100);
+const dayCount = () => Math.round((tripEnd(rec.trip) - tripStart(rec.trip)) / DAY);
+
+function setZoom(next, anchorClientY) {
+  const box = scroller.getBoundingClientRect();
+  const offset = anchorClientY == null ? box.height / 2 : anchorClientY - box.top;
+  const dayAtAnchor = (scroller.scrollTop + offset - PAD) / pxPerDay;
+  pxPerDay = clamp(next, ZOOM_MIN, ZOOM_MAX);
+  storage.set(ZOOM_KEY, String(Math.round(pxPerDay)));
+  if (document.activeElement !== zoomInput) zoomInput.value = zoomToSlider(pxPerDay);
+  renderTimeline();
+  scroller.scrollTop = dayAtAnchor * pxPerDay + PAD - offset;
+}
+
+/* ---------- Timeline ---------- */
+
+function iconFor(it) {
+  if (it.type === 'travel') return MODES[it.mode]?.[0] || '🧳';
+  if (it.type === 'activity') return ACTIVITIES[it.kind]?.[0] || '⭐';
+  if (it.type === 'stay') return STAYS[it.kind]?.[0] || '🛏️';
+  return ITEM_TYPES[it.type][0];
+}
+function titleFor(it) {
+  if (it.type === 'travel') return `${it.from} to ${it.to}`;
+  if (it.type === 'activity') return it.title || ACTIVITIES[it.kind]?.[1] || 'Activity';
+  if (it.type === 'stay') return it.title || STAYS[it.kind]?.[1] || 'Stay';
+  return `Trip ${it.type === 'start' ? 'starts' : 'ends'}${it.location ? `: ${it.location}` : ''}`;
+}
+function metaFor(it) {
+  const a = toMs(it.at), b = it.until ? toMs(it.until) : null;
+  if (it.type === 'travel') return [MODES[it.mode]?.[1], it.details, fmtRange(a, b)].filter(Boolean).join(', ');
+  if (it.type === 'activity') return [fmtRange(a, b), it.location].filter(Boolean).join(', ');
+  return fmtRange(a, b);
+}
+
+// Greedy interval packing: each entry takes the first lane it fits in.
+function assignLanes(entries, gap) {
+  const laneEnds = [];
+  for (const e of entries.sort((x, y) => x.top - y.top)) {
+    let lane = laneEnds.findIndex(end => end + gap <= e.top);
+    if (lane < 0) lane = laneEnds.length;
+    laneEnds[lane] = e.top + e.height;
+    e.lane = lane;
+  }
+  return laneEnds.length;
+}
+
+function renderTimeline() {
+  const trip = rec.trip, T0 = tripStart(trip), T1 = tripEnd(trip);
+  const days = dayCount();
+  const y = ms => PAD + (ms - T0) / DAY * pxPerDay;
+  const dur = ms => ms / DAY * pxPerDay;
+  const { segs, mismatches } = computeSegments(trip);
+  assignPlaceHues(segs);
+  const mobile = matchMedia('(max-width: 640px)').matches;
+  const gutter = mobile ? 62 : 130, lineW = mobile ? 30 : 54;
+  const compact = pxPerDay < 110;
+  const height = PAD * 2 + days * pxPerDay;
+
+  const track = h('.track', { style: { height: px(height) } });
+  track.classList.toggle('tiny', pxPerDay < 90);
+
+  // Day grid
+  for (let i = 0; i < days; i++) {
+    const ms = T0 + i * DAY;
+    const places = [...new Set(segs.filter(s => s.kind === 'place' && s.a < ms + DAY && s.b > ms).map(s => s.name))];
+    const day = h('.day', { className: i % 2 ? 'day alt' : 'day', style: { top: px(y(ms)), height: px(pxPerDay) } },
+      h('.day-label', {}, h('strong', {}, fmtDay(ms)),
+        h('span', {}, `Day ${i + 1}`), !mobile && places.length > 0 && h('span', {}, ` in ${places.slice(0, 2).join(', ')}`)));
+    const step = pxPerDay >= 900 ? 3 : pxPerDay >= 320 ? 6 : 0;
+    for (let hr = step; step && hr < 24; hr += step) {
+      day.append(h('.hour', { style: { top: px(hr / 24 * pxPerDay) } }, h('span', {}, fmtTime(ms + hr * HOUR))));
+    }
+    track.append(day);
+  }
+
+  // The fat line, colored by where you are
+  const line = h('.line', { style: { top: px(PAD), height: px(days * pxPerDay) } });
+  for (const s of segs) {
+    const el = h('.seg', { style: { top: px(y(s.a) - PAD), height: px(dur(s.b - s.a)) } });
+    if (s.kind === 'empty') el.classList.add('empty');
+    if (s.kind === 'place') {
+      el.style.background = placeColor(s.name);
+      // roughly 8px per letter, plus margins
+      if (dur(s.b - s.a) > s.name.length * 8 + 40) el.append(h('span.seg-label', {}, s.name));
+    }
+    if (s.kind === 'transit') el.style.background = `linear-gradient(${placeColor(s.from)}, ${placeColor(s.to)})`;
+    line.append(el);
+  }
+  track.append(line);
+  const lineCenter = gutter + lineW / 2;
+  for (const s of segs) {
+    if (s.kind !== 'transit') continue;
+    track.append(h('.marker', { style: { left: px(lineCenter), top: px(y((s.a + s.b) / 2)) } }, iconFor(s.item)));
+  }
+  for (const it of trip.items) {
+    if (it.type !== 'start' && it.type !== 'end') continue;
+    track.append(h('.marker', { style: { left: px(lineCenter), top: px(y(toMs(it.at))) } }, iconFor(it)));
+  }
+
+  // Stays sit in a column right next to the line
+  const stays = trip.items.filter(i => i.type === 'stay').map(it => {
+    const a = toMs(it.at), b = Math.max(toMs(it.until || it.at), a);
+    return { it, top: y(a), height: Math.max(dur(b - a), 30), a };
+  });
+  const stayLanes = assignLanes(stays, 2);
+  const stayW = mobile ? 30 : 136;
+  const stayX = gutter + lineW + 8;
+  for (const s of stays) {
+    const place = placeAt(segs, s.a).name;
+    const color = place ? placeColor(place) : '#9dbcc6';
+    const link = safeUrl(s.it.url);
+    const nights = s.it.until ? Math.round((toMs(s.it.until.slice(0, 10)) - toMs(s.it.at.slice(0, 10))) / DAY) : 0;
+    track.append(itemNode('.stay', s.it, {
+      left: px(stayX + s.lane * (stayW + 4)), top: px(s.top), width: px(stayW), height: px(s.height),
+      'border-color': color, background: `color-mix(in oklch, ${color} 28%, white)`,
+    }, h('span.stay-inner', {},
+      h('span.stay-head', {}, iconFor(s.it), h('b', {}, titleFor(s.it))),
+      !mobile && h('small', {}, nights === 1 ? '1 night' : `${nights} nights`),
+      link && !mobile && h('small', {}, ' ', h('a', { href: link, target: '_blank', rel: 'noopener noreferrer', onclick: e => e.stopPropagation() }, 'Link')))));
+  }
+
+  // Everything else gets a card, connected to the line by a tick
+  const cards = trip.items.filter(i => i.type !== 'stay').map(it => {
+    const a = toMs(it.at), b = Math.max(toMs(it.until || it.at), a);
+    const min = compact ? 30 : it.type === 'start' || it.type === 'end' ? 52 : 58;
+    return { it, a, y: y(a), top: Math.max(y(a) - 15, 0), height: Math.max(dur(b - a) + 15, min) };
+  });
+  const cardLanes = Math.max(assignLanes(cards, 5), 1);
+  const cardX = stayX + (stayLanes ? stayLanes * (stayW + 4) : 0) + 16;
+  const avail = scroller.clientWidth - cardX - 14;
+  const laneW = clamp(avail / cardLanes - 6, Math.min(170, avail), 340);
+  track.style.width = px(Math.max(scroller.clientWidth, cardX + cardLanes * (laneW + 6) + 14));
+
+  for (const c of cards) {
+    const x = cardX + c.lane * (laneW + 6);
+    const place = placeAt(segs, c.a);
+    const color = place.name ? placeColor(place.name) : '#9dbcc6';
+    const flag = c.it.type === 'start' || c.it.type === 'end';
+    const warn = mismatches[c.it.id];
+    const link = safeUrl(c.it.url);
+    track.append(h('.tick', { style: { left: px(gutter + lineW), top: px(c.y - 1), width: px(x - gutter - lineW), background: color } }));
+    track.append(itemNode(flag ? '.card.flag' : '.card', c.it, { left: px(x), top: px(c.top), width: px(laneW), height: px(c.height) },
+      h('span.icon', { style: { background: flag ? 'transparent' : color } }, iconFor(c.it)),
+      h('span.text', {},
+        h('b', {}, titleFor(c.it)),
+        h('span.meta', {}, metaFor(c.it)),
+        warn && h('span.meta.warn', {}, `You're in ${warn} before this`),
+        link && h('span.meta', {}, h('a', { href: link, target: '_blank', rel: 'noopener noreferrer', onclick: e => e.stopPropagation() }, 'Open link')))));
+    if (compact) track.lastChild.classList.add('compact');
+  }
+
+  if (trip.items.every(i => i.type === 'start') && !readOnly) {
+    track.append(h('.empty-hint', { style: { left: px(gutter + lineW + 24), top: px(PAD + 56) } },
+      'Point at the colored strip and click to add travel, stays and activities.'));
+  }
+
+  if (!readOnly) attachAddCursor(track, line, segs);
+  scroller.replaceChildren(track);
+}
+
+function itemNode(spec, item, style, ...kids) {
+  const open = () => (readOnly ? openDetails(item) : openItemDialog(item));
+  return h(spec, {
+    style, tabIndex: 0, role: 'button', 'data-id': item.id, 'aria-label': `${titleFor(item)}, ${metaFor(item)}`,
+    onclick: open,
+    onkeydown(e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } },
+  }, ...kids);
+}
+
+function attachAddCursor(track, line, segs) {
+  const T0 = tripStart(rec.trip), T1 = tripEnd(rec.trip);
+  const chip = h('span');
+  const guide = h('.guide', { hidden: true }, h('i', {}, '+'), chip);
+  track.append(guide);
+  const timeAt = clientY => {
+    const snap = pxPerDay >= 600 ? 15 * MIN : pxPerDay >= 150 ? 30 * MIN : HOUR;
+    const raw = T0 + (clientY - track.getBoundingClientRect().top - PAD) / pxPerDay * DAY;
+    return clamp(Math.round(raw / snap) * snap, T0, T1 - snap);
+  };
+  line.addEventListener('pointermove', e => {
+    if (e.pointerType === 'touch') return;
+    const t = timeAt(e.clientY), place = placeAt(segs, t);
+    guide.hidden = false;
+    guide.style.top = px(PAD + (t - T0) / DAY * pxPerDay);
+    const where = place.outside ? 'outside the trip' : place.transit ? `on the way to ${place.name}` : place.name ? `in ${place.name}` : '';
+    chip.textContent = `${fmtDay(t)}, ${fmtTime(t)}${where ? `, ${where}` : ''}`;
+  });
+  line.addEventListener('pointerleave', () => { guide.hidden = true; });
+  line.addEventListener('click', e => openAddMenu(timeAt(e.clientY), e.clientX, e.clientY));
+}
+
+/* ---------- Adding and editing items ---------- */
+
+function openAddMenu(t, x, y) {
+  document.querySelector('.menu')?.remove();
+  const has = type => rec.trip.items.some(i => i.type === type);
+  const close = () => { menu.remove(); document.removeEventListener('pointerdown', outside, true); document.removeEventListener('keydown', onKey); };
+  const outside = e => { if (!menu.contains(e.target)) close(); };
+  const onKey = e => { if (e.key === 'Escape') close(); };
+  const menu = h('.menu', { role: 'menu' },
+    h('p', {}, `${fmtDay(t)}, ${fmtTime(t)}`),
+    Object.entries(ITEM_TYPES).map(([type, [icon, label]]) => {
+      const taken = (type === 'start' || type === 'end') && has(type);
+      return h('button', {
+        type: 'button', role: 'menuitem', disabled: taken,
+        onclick() { close(); openItemDialog(newItem(type, t)); },
+      }, `${icon}  ${label}${taken ? ' (already added)' : ''}`);
+    }));
+  document.body.append(menu);
+  menu.style.left = px(clamp(x, 8, innerWidth - menu.offsetWidth - 8));
+  menu.style.top = px(clamp(y, 8, innerHeight - menu.offsetHeight - 8));
+  document.addEventListener('pointerdown', outside, true);
+  document.addEventListener('keydown', onKey);
+  menu.querySelector('button:not(:disabled)')?.focus({ preventScroll: true });
+}
+
+function newItem(type, t) {
+  const trip = rec.trip, last = tripEnd(trip) - MIN;
+  const here = placeAt(computeSegments(trip).segs, t).name;
+  const base = { id: uid(), type, at: fromMs(t), isNew: true };
+  if (type === 'travel') return { ...base, mode: 'flight', from: here, to: '', until: fromMs(Math.min(t + 2 * HOUR, last)) };
+  if (type === 'activity') return { ...base, kind: 'sightseeing', until: fromMs(Math.min(t + 2 * HOUR, last)) };
+  if (type === 'stay') {
+    // Default check-out: the next departure, or else the next morning.
+    const next = trip.items.filter(i => i.type === 'travel' && toMs(i.at) > t).map(i => toMs(i.at)).sort((a, b) => a - b)[0];
+    const morning = Math.floor(t / DAY) * DAY + DAY + 10 * HOUR;
+    return { ...base, kind: 'hotel', until: fromMs(Math.min(next || morning, last)) };
+  }
+  return { ...base, location: here };
+}
+
+function choiceGroup(name, options, selected, legend) {
+  return h('fieldset.choices', { 'aria-label': legend },
+    Object.entries(options).map(([value, [icon, label]]) => h('label', {},
+      h('input', { type: 'radio', name, value, checked: value === selected }),
+      h('span', {}, `${icon} ${label}`))));
+}
+
+function openItemDialog(item) {
+  const trip = rec.trip, isNew = !!item.isNew;
+  const knownPlaces = [...new Set(trip.items.flatMap(i => [i.from, i.to, i.location]).filter(Boolean))];
+  const placesList = h('datalist', { id: 'known-places' }, knownPlaces.map(p => h('option', { value: p })));
+  const bounds = { min: trip.startDate + 'T00:00', max: trip.endDate + 'T23:59' };
+  const text = (name, label, value, opts = {}) =>
+    h('label.field', {}, label, h('input', { name, value: value || '', ...opts }));
+  const when = (name, label, value) => text(name, label, value, { type: 'datetime-local', required: true, ...bounds });
+  const placeOpts = { required: true, autocomplete: 'off', list: 'known-places' };
+  const notes = h('label.field', {}, 'Notes', h('textarea', { name: 'notes', rows: 2, value: item.notes || '' }));
+  const fields = {
+    travel: () => [
+      choiceGroup('mode', MODES, item.mode, 'How you travel'),
+      h('.row', {}, text('from', 'From', item.from, placeOpts), text('to', 'To', item.to, placeOpts)),
+      h('.row', {}, when('at', 'Departs', item.at), when('until', 'Arrives', item.until)),
+      h('p.hint', {}, 'Use local times at each end.'),
+      text('details', 'Details', item.details, { placeholder: 'Flight number, seat, operator' }),
+      text('url', 'Link', item.url, { placeholder: 'Optional' }),
+    ],
+    activity: () => [
+      choiceGroup('kind', ACTIVITIES, item.kind, 'Kind of activity'),
+      text('title', 'Name', item.title, { placeholder: 'Optional' }),
+      h('.row', {}, when('at', 'Starts', item.at), when('until', 'Ends', item.until)),
+      text('location', 'Where', item.location, { placeholder: 'Optional', autocomplete: 'off' }),
+      text('url', 'Link', item.url, { placeholder: 'Optional' }),
+    ],
+    stay: () => [
+      choiceGroup('kind', STAYS, item.kind, 'Kind of stay'),
+      text('title', 'Name', item.title, { placeholder: 'Optional' }),
+      h('.row', {}, when('at', 'Check-in', item.at), when('until', 'Check-out', item.until)),
+      text('url', 'Link', item.url, { placeholder: 'Optional' }),
+    ],
+    start: () => [text('location', 'Where does the trip start?', item.location, placeOpts), when('at', 'When', item.at)],
+    end: () => [text('location', 'Where does the trip end?', item.location, placeOpts), when('at', 'When', item.at)],
+  };
+  const error = h('p.error', { hidden: true });
+  const fail = message => { error.textContent = message; error.hidden = false; };
+
+  const form = h('form', {
+    onsubmit(e) {
+      e.preventDefault();
+      const data = Object.fromEntries(new FormData(form));
+      for (const k of Object.keys(data)) data[k] = data[k].trim();
+      const a = toMs(data.at), b = data.until ? toMs(data.until) : null;
+      if (a < tripStart(trip) || (b ?? a) >= tripEnd(trip) || a >= tripEnd(trip)) return fail('Times have to fall within the trip dates. Use Change dates to extend the trip.');
+      if (b != null && b < a && !(item.type === 'travel' && a - b <= DAY)) return fail('The end has to be after the beginning.');
+      if (data.url) {
+        const url = safeUrl(data.url);
+        if (!url) return fail('Enter the link as a web address, like https://example.com.');
+        data.url = url;
+      }
+      const updated = { id: item.id, type: item.type, ...data };
+      const i = trip.items.findIndex(x => x.id === item.id);
+      if (i >= 0) trip.items[i] = updated; else trip.items.push(updated);
+      dlg.close();
+      commit();
+      refocus(item.id);
+    },
+  },
+    h('h2', {}, `${isNew ? 'Add' : 'Edit'} ${ITEM_TYPES[item.type][1].toLowerCase()}`),
+    placesList,
+    fields[item.type](),
+    notes,
+    error,
+    h('.actions', {},
+      !isNew && h('button.danger.left', {
+        type: 'button',
+        onclick() {
+          const at = trip.items.findIndex(x => x.id === item.id);
+          const [removed] = trip.items.splice(at, 1);
+          dlg.close();
+          commit();
+          toast(`Deleted ${titleFor(removed)}`, { label: 'Undo', run() { trip.items.splice(at, 0, removed); commit(); } });
+        },
+      }, 'Delete'),
+      h('button', { type: 'button', onclick() { dlg.close(); } }, 'Cancel'),
+      h('button.primary', { type: 'submit' }, isNew ? 'Add to trip' : 'Save changes')));
+  const dlg = openDialog(form);
+}
+
+function refocus(id) {
+  scroller.querySelector(`[data-id="${CSS.escape(id)}"]`)?.focus({ preventScroll: true });
+}
+
+function openDetails(item) {
+  const link = safeUrl(item.url);
+  const dlg = openDialog(h('div', {},
+    h('h2', {}, `${iconFor(item)} ${titleFor(item)}`),
+    h('p', {}, metaFor(item)),
+    item.notes && h('p.notes', {}, item.notes),
+    link && h('p', {}, h('a', { href: link, target: '_blank', rel: 'noopener noreferrer' }, link)),
+    h('.actions', {}, h('button', { type: 'button', onclick() { dlg.close(); } }, 'Close'))));
+}
+
+function openDatesDialog() {
+  const trip = rec.trip;
+  const first = h('input', { type: 'date', required: true, value: trip.startDate });
+  const last = h('input', { type: 'date', required: true, value: trip.endDate });
+  const error = h('p.error', { hidden: true });
+  const fail = m => { error.textContent = m; error.hidden = false; };
+  const dlg = openDialog(h('form', {
+    onsubmit(e) {
+      e.preventDefault();
+      if (last.value < first.value) return fail('The last day has to be on or after the first day.');
+      const lo = toMs(first.value), hi = toMs(last.value) + DAY;
+      const outside = trip.items.filter(i => toMs(i.at) < lo || toMs(i.until || i.at) >= hi);
+      if (outside.length) return fail(`${outside.length} ${outside.length === 1 ? 'item falls' : 'items fall'} outside these dates. Move or delete them first.`);
+      trip.startDate = first.value;
+      trip.endDate = last.value;
+      dlg.close();
+      commit();
+    },
+  },
+    h('h2', {}, 'Change dates'),
+    h('.row', {}, h('label.field', {}, 'First day', first), h('label.field', {}, 'Last day', last)),
+    error,
+    h('.actions', {},
+      h('button', { type: 'button', onclick() { dlg.close(); } }, 'Cancel'),
+      h('button.primary', { type: 'submit' }, 'Save dates'))));
+}
+
+/* ---------- Saving and sharing ---------- */
+
+function downloadTrip() {
+  const name = rec.trip.title.replace(/[^\p{L}\p{N}]+/gu, '-').toLowerCase() || 'trip';
+  const url = URL.createObjectURL(new Blob([JSON.stringify(rec.trip, null, 2)], { type: 'application/json' }));
+  h('a', { href: url, download: name + '.json' }).click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function openShareDialog() {
+  const body = h('div');
+  const dlg = openDialog(body);
+  const draw = (message, isError) => {
+    const token = storage.get(TOKEN_KEY);
+    const tokenInput = h('input', { type: 'password', autocomplete: 'off', placeholder: 'ghp_…' });
+    const saveBtn = h('button.primary', {
+      type: 'button',
+      async onclick() {
+        const tok = token || tokenInput.value.trim();
+        if (!tok) return draw('Paste a GitHub token first.', true);
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving…';
+        try {
+          const saved = await saveToGitHub(rec, tok);
+          storage.set(TOKEN_KEY, tok);
+          updateStatus();
+          draw(saved ? 'Saved to GitHub.' : 'Not saved. Nothing changed on GitHub.', !saved);
+        } catch (err) { draw(err.message, true); }
+      },
+    }, rec.gistId ? 'Save changes to link' : 'Save and create link');
+    const link = rec.gistId && h('input', { readOnly: true, value: shareLink(rec), 'aria-label': 'Share link', onfocus(e) { e.target.select(); } });
+
+    body.replaceChildren(
+      h('h2', {}, 'Save and share'),
+      h('p.hint', {}, 'Changes are kept in this browser automatically.'),
+      h('h3', {}, 'Share a view-only link'),
+      h('p.hint', {}, 'Your trip is encrypted before it goes to GitHub. Anyone with the link can read it, and a link can’t be taken back once it’s been sent.'),
+      location.protocol === 'file:' && h('p.hint', {}, 'This page is running from a file on your computer. Host it online, for example on GitHub Pages, so that links work for other people.'),
+      link && h('.row', {}, h('div', { style: { flex: '1 1 200px' } }, link), h('button', {
+        type: 'button',
+        async onclick() {
+          try { await navigator.clipboard.writeText(link.value); toast('Link copied.'); }
+          catch { link.focus(); toast('Press Cmd+C or Ctrl+C to copy the selected link.'); }
+        },
+      }, 'Copy link')),
+      !token && h('label.field', {}, 'GitHub token', tokenInput),
+      !token && h('p.hint', {}, h('a', { href: 'https://github.com/settings/tokens/new?scopes=gist&description=paodequeijo', target: '_blank', rel: 'noopener noreferrer' }, 'Create a token'),
+        ' with only the gist permission. It stays in this browser and is never part of the link.'),
+      message && h(isError ? 'p.error' : 'p', {}, message),
+      h('.row', {}, saveBtn,
+        token && h('button.plain', { type: 'button', onclick() { storage.remove(TOKEN_KEY); draw('Token removed from this browser.'); } }, 'Forget my token')),
+      h('h3', {}, 'Keep a copy as a file'),
+      h('p.hint', {}, 'Trip files aren’t encrypted, so keep them somewhere private.'),
+      h('.row', {},
+        h('button', { type: 'button', onclick: downloadTrip }, 'Download trip file'),
+        h('button', { type: 'button', onclick() { dlg.close(); pickTripFile(); } }, 'Open a trip file')),
+      h('.actions', {}, h('button', { type: 'button', onclick() { dlg.close(); } }, 'Done')));
+  };
+  draw();
+}
+
+/* ---------- Start ---------- */
+
+window.addEventListener('popstate', route);
+window.addEventListener('hashchange', route);
+window.addEventListener('resize', () => { if (rec && scroller?.isConnected) renderTimeline(); });
+window.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 's' && rec && !readOnly) { e.preventDefault(); openShareDialog(); }
+});
+route();
+</script>
+</body>
+</html>
