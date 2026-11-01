@@ -118,7 +118,7 @@
   .card.compact .meta { display: none; }
 
   .guide { position: absolute; left: 0; right: 0; height: 0; border-top: 2px dashed var(--ink); z-index: 5; pointer-events: none; }
-  .guide i { position: absolute; left: calc(var(--gutter) + var(--line-width) / 2 - 14px); top: -15px; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; background: var(--sun); border: 2px solid var(--ink); font-size: 18px; font-weight: 700; line-height: 1; }
+  .guide i { position: absolute; left: calc(var(--gutter) + var(--line-width) / 2 - 14px); top: -15px; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; background: var(--sun); border: 2px solid var(--ink); font-size: 18px; font-style: normal; font-weight: 700; line-height: 1; }
   .guide span { position: absolute; left: calc(var(--gutter) + var(--line-width) + 8px); top: -30px; padding: 2px 8px; background: var(--ink); color: var(--white); border-radius: 7px; font-size: 13px; white-space: nowrap; }
   .empty-hint { position: absolute; z-index: 3; max-width: 300px; color: var(--ink-soft); font-size: 16px; pointer-events: none; }
 
@@ -165,7 +165,7 @@
 /* ---------- Choices ---------- */
 
 const MODES = {
-  flight: ['✈️', 'Flight'], car: ['🚗', 'Car'], pickup: ['🚐', 'Van or Uber'], boat: ['⛴️', 'Boat'],
+  flight: ['✈️', 'Flight'], car: ['🚗', 'Car'], uber: ['🚕', 'Uber'], pickup: ['🚐', 'Shuttle service'], boat: ['⛴️', 'Boat'],
   train: ['🚆', 'Train'], walk: ['🚶', 'Walking'], transit: ['🚌', 'Public transport'],
 };
 const ACTIVITIES = {
