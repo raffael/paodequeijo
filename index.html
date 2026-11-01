@@ -97,6 +97,7 @@
   .track { position: relative; }
   .day { position: absolute; left: 0; right: 0; border-top: 1px solid var(--separator); background: var(--bg); }
   .day.alt { background: var(--bg-alt); }
+  .day.week { border-top: 2px solid #c7c7cc; }
   .day-label, .hour span { -webkit-user-select: none; user-select: none; }
   .day-label { position: sticky; z-index: 1; background: inherit; top: 8px; display: block; width: var(--gutter); padding: 8px 6px 0 14px; font-size: 12px; color: var(--text-secondary); }
   .day-label strong { display: block; font-size: 15px; font-weight: 400; }
@@ -822,7 +823,7 @@ function renderTimeline() {
   for (let i = 0; i < days; i++) {
     const ms = T0 + i * DAY;
     const places = [...new Set(segs.filter(s => s.kind === 'place' && s.a < ms + DAY && s.b > ms).map(s => s.name))];
-    const day = h('.day', { className: i % 2 ? 'day alt' : 'day', style: { top: px(y(ms)), height: px(pxPerDay) } },
+    const day = h('.day', { className: `day${i % 2 ? ' alt' : ''}${new Date(ms).getUTCDay() === 1 ? ' week' : ''}`, style: { top: px(y(ms)), height: px(pxPerDay) } },
       h('.day-label', {},
         h('strong', {}, h('b', {}, new Date(ms).getUTCDate()), ` ${fmtDatePart(ms, ['weekday', 'short'])}`,
           // The month only shows where it starts, so every date stays unambiguous.
