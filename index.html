@@ -85,7 +85,8 @@
   .toolbar strong.title { font-size: 17px; font-weight: 600; }
   .toolbar input.title:hover { background: rgb(0 0 0 / .04); }
   .status { color: var(--text-secondary); font-size: 12px; }
-  .save-actions { display: flex; gap: 6px; }
+  .save-actions { display: flex; gap: 6px; align-items: center; }
+  .unsaved { margin-right: 4px; font-size: 13px; font-weight: 700; color: var(--danger); }
   .zoom { display: flex; align-items: center; gap: 4px; }
   .zoom input { width: 100px; padding: 0; border: 0; accent-color: var(--accent); }
   .zoom input:focus { outline: revert; }
@@ -735,6 +736,7 @@ function updateStatus() {
   if (!rec || readOnly) return;
   statusEl.textContent = !rec.gistId ? 'Saved in this browser only' : rec.dirty ? 'Not saved to link yet' : 'All changes saved';
   saveArea.replaceChildren(...(rec.gistId ? [
+    rec.dirty && h('span.unsaved', { title: 'Your changes are kept in this browser. Save to update the shared link.' }, 'Unsaved'),
     h('button', { type: 'button', onclick: openShareDialog }, 'Share'),
     h('button.primary', { type: 'button', disabled: saving || !rec.dirty, onclick: quickSave }, saving ? 'Saving…' : 'Save'),
   ] : [h('button.primary', { type: 'button', onclick: openShareDialog }, 'Save…')]));
