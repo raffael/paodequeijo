@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- The decryption key lives in the URL, so the page may only talk to GitHub and loads nothing external. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://api.github.com https://gist.githubusercontent.com; base-uri 'none'; form-action 'none'">
+<!-- The decryption key lives in the URL, so the page only talks to GitHub. The one exception is the map preview,
+     which loads Google Maps in a frame, and only after someone clicks "Show map". -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://api.github.com https://gist.githubusercontent.com; frame-src https://www.google.com; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <title>paodequeijo</title>
 <style>
@@ -167,6 +168,9 @@
   .choices label:hover span { background: rgb(0 0 0 / .09); }
   .choices input:checked + span { background: var(--accent); color: #fff; font-weight: 500; }
   .choices input:focus-visible + span { outline: 3px solid rgb(0 113 227 / .4); }
+  .map-controls { margin-bottom: 12px; }
+  .map-controls .hint { margin: 6px 0 0; }
+  .map-frame { display: block; width: 100%; height: 220px; margin-top: 10px; border: 0; border-radius: 10px; background: var(--bg-grouped); }
   .choices-label { margin: 0 0 4px; font-weight: 500; font-size: 12px; color: var(--text-secondary); }
   .notes { white-space: pre-wrap; overflow-wrap: anywhere; }
 
@@ -258,6 +262,38 @@ function safeUrl(u) {
   } catch { return null; }
 }
 
+// Maps: the address is only sent to Google when someone asks for the map or follows the link.
+const mapQuery = address => (address || '').split('\n').map(l => l.trim()).filter(Boolean).join(', ');
+const mapsLink = q => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+const mapsEmbed = q => `https://www.google.com/maps?q=${encodeURIComponent(q)}&output=embed`;
+
+function mapControls(getAddress) {
+  let shown = false, frameSrc = '';
+  const toggle = h('button', { type: 'button', onclick() { shown = !shown; update(); } });
+  const open = h('a.button', { target: '_blank', rel: 'noopener noreferrer' }, 'Open in Maps');
+  const hint = h('p.hint', {}, 'Showing the map sends this address to Google Maps.');
+  const area = h('div');
+  const root = h('.map-controls', {}, h('.row', {}, toggle, open), hint, area);
+  function update() {
+    const q = mapQuery(getAddress());
+    root.hidden = !q;
+    if (!q) { shown = false; frameSrc = ''; area.replaceChildren(); } // without an address, nothing stays loaded
+    toggle.textContent = shown ? 'Hide map' : 'Show map';
+    hint.hidden = shown;
+    if (!q) return;
+    open.href = mapsLink(q);
+    if (!shown) { frameSrc = ''; area.replaceChildren(); return; }
+    if (frameSrc === mapsEmbed(q)) return;
+    frameSrc = mapsEmbed(q);
+    area.replaceChildren(h('iframe.map-frame', {
+      src: frameSrc, title: 'Map', loading: 'lazy', referrerpolicy: 'no-referrer',
+      sandbox: 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox',
+    }));
+  }
+  update();
+  return { el: root, update };
+}
+
 // Same place name, same color, for everyone viewing the trip.
 function placeHash(name) {
   let hash = 0x811c9dc5;
@@ -311,7 +347,7 @@ function cleanTrip(data) {
   const items = data.items.filter(it => it && ITEM_TYPES[it.type] && isTime(it.at)).map(it => {
     const out = { id: String(it.id || uid()), type: it.type, at: it.at };
     if (isTime(it.until)) out.until = it.until;
-    for (const k of ['mode', 'kind', 'from', 'to', 'title', 'location', 'details', 'url', 'notes']) {
+    for (const k of ['mode', 'kind', 'from', 'to', 'title', 'location', 'address', 'details', 'url', 'notes']) {
       if (typeof it[k] === 'string') out[k] = it[k];
     }
     if (it.type === 'travel' && !MODES[out.mode]) out.mode = 'car';
@@ -939,6 +975,13 @@ function openItemDialog(item) {
   const when = (name, label, value) => text(name, label, value, { type: 'datetime-local', required: true, ...bounds });
   const placeOpts = { required: true, autocomplete: 'off', list: 'known-places' };
   const notes = h('label.field', {}, 'Notes', h('textarea', { name: 'notes', rows: 2, value: item.notes || '' }));
+  const addressField = () => {
+    const input = h('textarea', { name: 'address', rows: 2, maxlength: 300, autocomplete: 'off', placeholder: 'Street, postal code, city, country', value: item.address || '' });
+    const map = mapControls(() => input.value);
+    let timer;
+    input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(map.update, 500); });
+    return [h('label.field', {}, 'Address', input), map.el];
+  };
   const fields = {
     travel: () => [
       choiceGroup('mode', MODES, item.mode, 'How you travel'),
@@ -953,12 +996,14 @@ function openItemDialog(item) {
       text('title', 'Name', item.title, { placeholder: 'Optional' }),
       h('.row', {}, when('at', 'Starts', item.at), when('until', 'Ends', item.until)),
       text('location', 'Where', item.location, { placeholder: 'Optional', autocomplete: 'off' }),
+      ...addressField(),
       text('url', 'Link', item.url, { placeholder: 'Optional' }),
     ],
     stay: () => [
       choiceGroup('kind', STAYS, item.kind, 'Kind of stay'),
       text('title', 'Name', item.title, { placeholder: 'Optional' }),
       h('.row', {}, when('at', 'Check-in', item.at), when('until', 'Check-out', item.until)),
+      ...addressField(),
       text('url', 'Link', item.url, { placeholder: 'Optional' }),
     ],
     start: () => [text('location', 'Where does the trip start?', item.location, placeOpts), when('at', 'When', item.at)],
@@ -1017,10 +1062,13 @@ function refocus(id) {
 
 function openDetails(item) {
   const link = safeUrl(item.url);
+  const map = mapQuery(item.address) && mapControls(() => item.address);
   const dlg = openDialog(h('div', {},
     h('h2', {}, headingNodes(item)),
     h('p.meta', {}, metaNodes(item)),
     h('p', {}, STATUSES[statusOf(item)].join(' ')),
+    map && h('p.notes', {}, item.address),
+    map && map.el,
     item.notes && h('p.notes', {}, item.notes),
     link && h('p', {}, h('a', { href: link, target: '_blank', rel: 'noopener noreferrer' }, link)),
     h('.actions', {}, h('button', { type: 'button', onclick() { dlg.close(); } }, 'Close'))));
