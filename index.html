@@ -126,7 +126,6 @@
   .stay .item-title, .card .item-title { white-space: normal; overflow-wrap: anywhere; }
   .stay small { font-size: 12px; color: var(--text-secondary); }
   .tick { position: absolute; height: 1.5px; z-index: 1; pointer-events: none; }
-  .tick.link { z-index: 3; }
   .pill { position: absolute; z-index: 3; cursor: pointer; border-radius: 999px; border: 1.5px solid var(--pill-edge); background: var(--pill-bg); }
   .pill.status-planned { border-style: dashed; background: var(--pill-tint); }
   .pill:hover { box-shadow: 0 1px 6px rgb(0 0 0 / .3); }
@@ -150,6 +149,7 @@
   .card.compact .item-kind { margin-right: 5px; }
   .card.compact .meta { display: none; }
   .card.status-planned { border: 1.5px dashed #8e8e93; }
+  .card.linked { border-width: 1.5px; }
   .card.flag.status-planned { border-color: var(--accent); }
   .stay.status-planned, .marker.status-planned { border-style: dashed; }
   .status-suggestion { opacity: .5; }
@@ -978,7 +978,7 @@ function renderTimeline() {
   const avail = scroller.clientWidth - cardX - 14;
   const cards = trip.items.filter(i => i.type !== 'stay').map(it => {
     const a = toMs(it.at), b = Math.max(toMs(it.until || it.at), a);
-    return { it, a, b, shift: pillOf.has(it.id) ? pillW / 2 : 0 }; // the connector meets a capsule at its center
+    return { it, a, b, linked: pillOf.has(it.id) }; // a box with a capsule lines up with it, and has no connector
   });
   // Titles wrap, so a box's height depends on its width, which depends on how many columns the heights need.
   let laneW = 340, cardLanes = 1;
@@ -987,9 +987,9 @@ function renderTimeline() {
       const title = titleText(c.it);
       const titleLines = !title ? 0 : compact ? 1 : textLines(title, 600, 13, laneW - 24);
       const lines = 2 + titleLines + (mismatches[c.it.id] ? 1 : 0) + (safeUrl(c.it.url) || mapQuery(c.it.address) ? 1 : 0);
-      c.y = y(c.a) + c.shift;
-      c.top = Math.max(c.y - 15, 0);
-      c.height = Math.max(dur(c.b - c.a) + 15 - c.shift, compact ? 30 : 20 + lines * 17);
+      c.y = y(c.a);
+      c.top = c.linked ? c.y : Math.max(c.y - 15, 0);
+      c.height = Math.max(dur(c.b - c.a) + (c.linked ? 0 : 15), compact ? 30 : 20 + lines * 17);
     }
     cardLanes = Math.max(assignLanes(cards, 5), 1);
     const next = clamp(avail / cardLanes - 6, Math.min(170, avail), 340);
@@ -1005,10 +1005,10 @@ function renderTimeline() {
     const flag = c.it.type === 'start' || c.it.type === 'end';
     const warn = mismatches[c.it.id];
     const links = itemLinks(c.it, 'Open link');
-    const pill = pillOf.get(c.it.id);
-    const from = pill ? pillX + pill.lane * (pillW + 4) + pillW : gutter + lineW;
-    track.append(h(`.tick.status-${statusOf(c.it)}${pill ? '.link' : ''}`, { style: { left: px(from), top: px(c.y - 1), width: px(x - from), background: pill ? itemColor(c.it) : color } }));
-    track.append(itemNode(flag ? '.card.flag' : '.card', c.it, { left: px(x), top: px(c.top), width: px(laneW), height: px(c.height) },
+    if (!c.linked) track.append(h(`.tick.status-${statusOf(c.it)}`, { style: { left: px(gutter + lineW), top: px(c.y - 1), width: px(x - gutter - lineW), background: color } }));
+    const style = { left: px(x), top: px(c.top), width: px(laneW), height: px(c.height) };
+    if (c.linked) style['border-color'] = itemColor(c.it); // same colour as its capsule
+    track.append(itemNode(`${flag ? '.card.flag' : '.card'}${c.linked ? '.linked' : ''}`, c.it, style,
       h('span.text', {},
         headingNodes(c.it),
         h('span.meta', {}, metaNodes(c.it)),
@@ -1021,7 +1021,7 @@ function renderTimeline() {
   for (const pl of pills) {
     const it = pl.it, color = itemColor(it);
     track.append(h(`.pill.status-${statusOf(it)}`, {
-      title: `${titleFor(it)}, ${metaFor(it)}`, 'aria-hidden': 'true',
+      title: `${titleFor(it)}, ${metaFor(it)}`, 'aria-hidden': 'true', 'data-for': it.id,
       onclick() { if (readOnly) openDetails(it); else openItemDialog(it); },
       style: {
         left: px(pillX + pl.lane * (pillW + 4)), top: px(pl.top), width: px(pillW), height: px(pl.height),
