@@ -84,6 +84,7 @@
   .toolbar strong.title { font-size: 17px; font-weight: 600; }
   .toolbar input.title:hover { background: rgb(0 0 0 / .04); }
   .status { color: var(--text-secondary); font-size: 12px; }
+  .save-actions { display: flex; gap: 6px; }
   .zoom { display: flex; align-items: center; gap: 4px; }
   .zoom input { width: 100px; padding: 0; border: 0; accent-color: var(--accent); }
   .zoom input:focus { outline: revert; }
@@ -278,7 +279,7 @@ function toast(message, action) {
   document.querySelector('.toast')?.remove();
   const el = h('.toast', { role: 'status' }, message,
     action && h('button', { type: 'button', onclick() { el.remove(); action.run(); } }, action.label));
-  document.body.append(el);
+  (document.querySelector('dialog[open]') || document.body).append(el); // modal dialogs cover anything outside them
   setTimeout(() => el.remove(), action ? 8000 : 3500);
 }
 
@@ -381,6 +382,7 @@ async function github(method, path, token, body) {
 
 async function saveToGitHub(rec, token) {
   rec.key = rec.key || newKey();
+  const snapshot = JSON.stringify(rec.trip);
   const files = { [GIST_FILE]: { content: await encryptTrip(rec.trip, rec.key) } };
   let gist;
   if (rec.gistId) {
@@ -395,7 +397,7 @@ async function saveToGitHub(rec, token) {
   }
   rec.gistId = gist.id;
   rec.gistUpdatedAt = gist.updated_at;
-  rec.dirty = false;
+  rec.dirty = JSON.stringify(rec.trip) !== snapshot; // edits made while saving still need saving
   saveRecord(rec);
   return true;
 }
@@ -461,7 +463,7 @@ function placeAt(segs, t) {
 
 /* ---------- App state and pages ---------- */
 
-let rec = null, readOnly = false, scroller = null, zoomInput = null, statusEl = null;
+let rec = null, readOnly = false, scroller = null, zoomInput = null, statusEl = null, saveArea = null, saving = false;
 let pxPerDay = clamp(+storage.get(ZOOM_KEY) || 200, 40, 1200);
 
 function navigate(search) {
@@ -572,6 +574,7 @@ function showTrip(record, viewOnly) {
     oninput() { setZoom(sliderToZoom(+zoomInput.value)); },
   });
   statusEl = h('span.status');
+  saveArea = h('.save-actions');
   scroller = h('.scroller', { tabIndex: 0, 'aria-label': 'Trip timeline' });
   scroller.addEventListener('wheel', e => {
     if (!e.ctrlKey && !e.metaKey) return; // trackpad pinch arrives as ctrl+wheel
@@ -603,7 +606,7 @@ function showTrip(record, viewOnly) {
           openAddMenu(tripStart(rec.trip) + day * DAY + 12 * HOUR, r.left, r.bottom + 6);
         },
       }, 'Add'),
-      !readOnly && h('button.primary', { type: 'button', onclick: openShareDialog }, 'Save and share')),
+      !readOnly && saveArea),
     readOnly && h('.notice', {}, 'You’re viewing this trip. Click anything to see its details.',
       h('button', { type: 'button', onclick() { editSharedTrip(rec); } }, 'Edit this trip')),
     scroller,
@@ -621,10 +624,28 @@ function commit() {
 }
 
 function updateStatus() {
-  if (!statusEl) return;
-  statusEl.textContent = readOnly ? '' :
-    !rec.gistId ? 'Saved in this browser' :
-    rec.dirty ? 'Changes not shared yet' : 'Shared link is up to date';
+  if (!rec || readOnly) return;
+  statusEl.textContent = !rec.gistId ? 'Saved in this browser only' : rec.dirty ? 'Not saved to link yet' : 'All changes saved';
+  saveArea.replaceChildren(...(rec.gistId ? [
+    h('button', { type: 'button', onclick: openShareDialog }, 'Share'),
+    h('button.primary', { type: 'button', disabled: saving || !rec.dirty, onclick: quickSave }, saving ? 'Saving…' : 'Save'),
+  ] : [h('button.primary', { type: 'button', onclick: openShareDialog }, 'Save…')]));
+}
+
+async function quickSave() {
+  const token = storage.get(TOKEN_KEY);
+  if (!token) return openShareDialog();
+  if (saving || !rec.dirty) return;
+  const target = rec;
+  saving = true;
+  updateStatus();
+  try {
+    if (await saveToGitHub(target, token)) toast('Saved.');
+  } catch (err) {
+    toast(err.message, { label: 'Try again', run: quickSave });
+  }
+  saving = false;
+  updateStatus();
 }
 
 /* ---------- Scale ---------- */
@@ -1020,15 +1041,16 @@ function openShareDialog() {
           const saved = await saveToGitHub(rec, tok);
           storage.set(TOKEN_KEY, tok);
           updateStatus();
-          draw(saved ? 'Saved to GitHub.' : 'Not saved. Nothing changed on GitHub.', !saved);
+          draw(saved ? 'Saved.' : 'Not saved. Nothing changed on GitHub.', !saved);
         } catch (err) { draw(err.message, true); }
       },
-    }, rec.gistId ? 'Save changes to link' : 'Save and create link');
+    }, rec.gistId ? 'Save' : 'Save and create link');
+    const showSave = !rec.gistId || !token || rec.dirty;
     const link = rec.gistId && h('input', { readOnly: true, value: shareLink(rec), 'aria-label': 'Share link', onfocus(e) { e.target.select(); } });
 
     body.replaceChildren(h('div', {},
-      h('h2', {}, 'Save and share'),
-      h('p.hint', {}, 'Changes are kept in this browser automatically.'),
+      h('h2', {}, rec.gistId ? 'Share' : 'Save and share'),
+      h('p.hint', {}, 'Changes are kept in this browser automatically. People with the link see them after you save.'),
       h('h3', {}, 'Share a view-only link'),
       h('p.hint', {}, 'Your trip is encrypted before it goes to GitHub. Anyone with the link can read it, and a link can’t be taken back once it’s been sent.'),
       location.protocol === 'file:' && h('p.hint', {}, 'This page is running from a file on your computer. Host it online, for example on GitHub Pages, so that links work for other people.'),
@@ -1043,7 +1065,7 @@ function openShareDialog() {
       !token && h('p.hint', {}, h('a', { href: 'https://github.com/settings/tokens/new?scopes=gist&description=paodequeijo', target: '_blank', rel: 'noopener noreferrer' }, 'Create a token'),
         ' with only the gist permission. It stays in this browser and is never part of the link.'),
       message && h(isError ? 'p.error' : 'p', {}, message),
-      h('.row', {}, saveBtn,
+      h('.row', {}, showSave && saveBtn,
         token && h('button.plain', { type: 'button', onclick() { storage.remove(TOKEN_KEY); draw('Token removed from this browser.'); } }, 'Forget my token')),
       h('h3', {}, 'Keep a copy as a file'),
       h('p.hint', {}, 'Trip files aren’t encrypted, so keep them somewhere private.'),
@@ -1061,7 +1083,11 @@ window.addEventListener('popstate', route);
 window.addEventListener('hashchange', route);
 window.addEventListener('resize', () => { if (rec && scroller?.isConnected) renderTimeline(); });
 window.addEventListener('keydown', e => {
-  if ((e.metaKey || e.ctrlKey) && e.key === 's' && rec && !readOnly) { e.preventDefault(); openShareDialog(); }
+  if ((e.metaKey || e.ctrlKey) && e.key === 's' && rec && !readOnly) {
+    e.preventDefault();
+    if (document.querySelector('dialog[open]')) return;
+    if (rec.gistId) quickSave(); else openShareDialog();
+  }
 });
 route();
 </script>
