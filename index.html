@@ -690,10 +690,10 @@ function metaFor(it) {
   return fmtRange(a, b);
 }
 
-// The same text as titleFor and metaFor, with what the user typed in bold.
+// What items show on screen: like titleFor and metaFor, with what the user typed in bold.
 function titleNodes(it) {
   const b = text => h('b', {}, text);
-  if (it.type === 'travel') return [b(it.from), ' to ', b(it.to)];
+  if (it.type === 'travel') return [b(it.from), ' -> ', b(it.to)];
   if (it.type === 'start' || it.type === 'end') {
     const label = `Trip ${it.type === 'start' ? 'starts' : 'ends'}`;
     return it.location ? [`${label}: `, b(it.location)] : [label];
