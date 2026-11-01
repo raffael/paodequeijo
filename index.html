@@ -277,6 +277,8 @@
     .stay .item-kind, .stay .item-title, .stay small { display: none; }
     .status { display: none; }
     .toolbar .title, .toolbar strong.title { font-size: 18px; }
+    /* iOS zooms the page when a field under 16px gets focus, and a zoomed page pans sideways */
+    input, textarea, label.field input, label.field textarea { font-size: 16px; }
   }
 </style>
 </head>
@@ -1093,11 +1095,14 @@ function renderTimeline() {
       c.height = Math.max(dur(c.b - c.a) + (c.linked ? 0 : 15), compact ? 30 : 20 + lines * 17);
     }
     cardLanes = Math.max(assignLanes(cards, 5), 1);
-    const next = clamp(avail / cardLanes - 6, Math.min(170, avail), 340);
+    const next = clamp(avail / cardLanes - 6, Math.min(mobile ? 100 : 170, avail), 340); // on phones, overlapping boxes may get narrower before anything scrolls sideways
     if (Math.abs(next - laneW) < .5) break;
     laneW = next;
   }
-  track.style.width = px(Math.max(scroller.clientWidth, cardX + cardLanes * (laneW + 6) + 14));
+  // Only scroll sideways when something really doesn't fit.
+  const needed = cardX + cardLanes * (laneW + 6) + 14, wide = needed > scroller.clientWidth + 2;
+  track.style.width = wide ? px(needed) : '';
+  scroller.style.overflowX = wide ? 'auto' : 'hidden';
 
   for (const c of cards) {
     const x = cardX + c.lane * (laneW + 6);
