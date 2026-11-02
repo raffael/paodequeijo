@@ -167,10 +167,13 @@
   .status { color: var(--text-secondary); font-size: 12px; }
   .save-actions { display: flex; gap: 6px; align-items: center; }
   .unsaved { margin-right: 4px; font-size: 13px; font-weight: 700; color: var(--danger); }
-  .zoom { display: flex; align-items: center; gap: 4px; }
-  .zoom input { width: 100px; padding: 0; border: 0; accent-color: var(--accent); }
-  .zoom input:focus { outline: revert; }
-  .zoom button { padding: 3px 9px; }
+  .zoom-dock { position: fixed; right: 18px; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); z-index: 6; display: flex; align-items: center; gap: 6px; padding: 5px; border-radius: 999px;
+               background: var(--bar-bg); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
+               box-shadow: 0 0 0 .5px var(--separator), 0 4px 16px rgb(0 0 0 / .14); }
+  .zoom-dock input { width: 110px; padding: 0; border: 0; background: transparent; accent-color: var(--accent); }
+  .zoom-dock input:focus { outline: revert; }
+  .zoom-button { width: 28px; height: 28px; padding: 0; border-radius: 50%; display: grid; place-items: center; }
+  .zoom-button .glyph { width: 16px; height: 16px; margin: 0; vertical-align: top; }
   .notice { padding: 8px 14px; background: var(--bg-grouped); border-bottom: 1px solid var(--separator); font-size: 13px; color: var(--text-secondary); display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 
   /* Timeline */
@@ -326,6 +329,8 @@
     .stay .item-kind, .stay .item-title, .stay small { display: none; }
     .status { display: none; }
     .toolbar .title, .toolbar strong.title { font-size: 18px; }
+    .zoom-dock input { width: 90px; }
+    .toast { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); } /* above the zoom controls */
     /* iOS zooms the page when a field under 16px gets focus, and a zoomed page pans sideways */
     input, textarea, label.field input, label.field textarea { font-size: 16px; }
   }
@@ -377,7 +382,9 @@ const ICONS = {
   themeAuto: '<path d="M12 2v2" /><path d="M14.837 16.385a6 6 0 1 1-7.223-7.222c.624-.147.97.66.715 1.248a4 4 0 0 0 5.26 5.259c.589-.255 1.396.09 1.248.715" /><path d="M16 12a4 4 0 0 0-4-4" /><path d="m19 5-1.256 1.256" /><path d="M20 12h2" />',
   themeLight: '<circle cx="12" cy="12" r="4" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="m4.93 4.93 1.41 1.41" /><path d="m17.66 17.66 1.41 1.41" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="m6.34 17.66-1.41 1.41" /><path d="m19.07 4.93-1.41 1.41" />',
   themeDark: '<path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" />'
-
+,
+  zoomOut: '<path d="M5 12h14"/>',
+  zoomIn: '<path d="M5 12h14"/><path d="M12 5v14"/>'
 };
 // The Airbnb mark is the SVG supplied by the user (https://www.svgrepo.com/show/473516/airbnb.svg), drawn as a solid
 // shape in the text colour. It is Airbnb's trademark, used here only to mark Airbnb stays.
@@ -909,15 +916,16 @@ function showTrip(record, viewOnly) {
             }),
         datesEl),
       statusEl,
-      h('.zoom', {},
-        h('button', { type: 'button', 'aria-label': 'Zoom out', onclick() { setZoom(pxPerDay / 1.4); } }, '−'),
-        zoomInput,
-        h('button', { type: 'button', 'aria-label': 'Zoom in', onclick() { setZoom(pxPerDay * 1.4); } }, '+')),
       !readOnly && saveArea,
       themeButton()),
     readOnly && h('.notice', {}, 'You’re viewing this trip. Click anything to see its details.',
       h('button', { type: 'button', onclick() { editSharedTrip(rec); } }, 'Edit this trip')),
     scroller,
+    // Zoom controls float in the bottom right corner, on a frosted pill. The round buttons are concentric with its ends.
+    h('.zoom-dock', {},
+      h('button.zoom-button', { type: 'button', 'aria-label': 'Zoom out', onclick() { setZoom(pxPerDay / 1.4); } }, drawIcon('zoomOut')),
+      zoomInput,
+      h('button.zoom-button', { type: 'button', 'aria-label': 'Zoom in', onclick() { setZoom(pxPerDay * 1.4); } }, drawIcon('zoomIn'))),
   ].filter(Boolean));
   app.classList.toggle('readonly', readOnly);
   renderTimeline();
