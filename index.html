@@ -237,10 +237,13 @@
   .tick { transition: transform .32s cubic-bezier(.2,.8,.2,1); }
   .pill { left: calc(var(--x) - var(--grow, 0px)); top: calc(var(--y) - var(--grow, 0px)); width: calc(var(--w) + 2 * var(--grow, 0px)); height: calc(var(--h) + 2 * var(--grow, 0px));
           transition: left .15s, top .15s, width .15s, height .15s, box-shadow .15s; }
-  .card.in-stack:not(.open).status-suggestion { opacity: 1; }
-  .card.in-stack:not(.open).status-suggestion > * { opacity: .5; }
-  .stack-count { position: absolute; top: 7px; right: 8px; padding: 0 7px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 18px; color: var(--text-secondary); background: var(--fill); }
-  .card.open .stack-count { display: none; }
+  /* a collapsed stack shows its boxes as one-line headers */
+  .card.in-stack:not(.open) { padding: 2px 8px; align-items: center; }
+  .card.in-stack:not(.open) .text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card.in-stack:not(.open) .item-kind, .card.in-stack:not(.open) .item-title { display: inline; }
+  .card.in-stack:not(.open) .item-title { white-space: nowrap; }
+  .card.in-stack:not(.open) .item-kind { margin-right: 5px; }
+  .card.in-stack:not(.open) .meta { display: none; }
   /* a capsule and its box light up together */
   .pill.hot { --grow: 2px; box-shadow: 0 0 0 2px color-mix(in oklch, var(--pill-bg) 22%, transparent), 0 1px 4px rgb(0 0 0 / .15); }
   .card.hot { box-shadow: 0 0 0 2px color-mix(in oklch, var(--item-color) 22%, transparent), 0 3px 10px rgb(0 0 0 / .12); }
@@ -919,7 +922,6 @@ async function quickSave() {
 /* ---------- Scale ---------- */
 
 const ZOOM_MIN = 40, ZOOM_MAX = 1200, PAD = 24;
-const PILL_ZOOM = 100; // from here on, travel and activities get a capsule next to the strip
 const zoomToSlider = z => 100 * Math.log(z / ZOOM_MIN) / Math.log(ZOOM_MAX / ZOOM_MIN);
 const sliderToZoom = v => ZOOM_MIN * Math.pow(ZOOM_MAX / ZOOM_MIN, v / 100);
 const dayCount = () => Math.round((tripEnd(rec.trip) - tripStart(rec.trip)) / DAY);
@@ -1023,18 +1025,23 @@ function assignLanes(entries, gap) {
   return laneEnds.length;
 }
 
-// Boxes that would collide are drawn as a stack: the first ones fanned out so their headers show, the rest tucked
-// behind the last one. Clicking a stack spreads it out and pushes everything below it down.
-const FAN = 44, MAX_FAN = 3, OPEN_GAP = 8;
+// Boxes that would collide form a stack. Collapsed, each shows as a one-line header that stays level with its capsule
+// whenever there is room (and is nudged down only as far as needed). Clicking spreads the stack into full boxes and
+// pushes everything below it down.
+const STACK_STEP = 32, STACK_H = 30, OPEN_GAP = 8;
 let stackState = null;
 function layoutBlock(block) {
-  const { members } = block, n = members.length, visible = Math.min(n, MAX_FAN);
-  members.forEach((m, i) => {
-    m.cTop = block.top + Math.min(i, visible - 1) * FAN;
-    m.cHeight = i === n - 1 ? m.height : Math.min(m.height, FAN + 12);
-  });
-  const front = members[n - 1];
-  block.bottom = front.cTop + front.height;
+  const { members } = block, n = members.length;
+  if (n === 1) {
+    const m = members[0];
+    m.cTop = m.top; m.cHeight = m.height; m.oTop = m.top;
+    block.top = m.top; block.bottom = m.top + m.height; block.extra = 0;
+    return;
+  }
+  let prev = -Infinity;
+  for (const m of members) { m.cTop = Math.max(m.top, prev + STACK_STEP); m.cHeight = STACK_H; prev = m.cTop; }
+  block.top = members[0].cTop;
+  block.bottom = prev + STACK_H;
   let next = block.top;
   for (const m of members) { m.oTop = next; next += m.height + OPEN_GAP; }
   block.extra = Math.max(0, next - OPEN_GAP - block.bottom);
@@ -1125,7 +1132,7 @@ function renderTimeline() {
 
   // Zoomed in far enough, travel and activities also show as capsules right next to the line
   const pillW = mobile ? 8 : 10, pillX = gutter + lineW + 6;
-  const pills = pxPerDay < PILL_ZOOM ? [] : trip.items.filter(i => i.type === 'travel' || i.type === 'activity').map(it => {
+  const pills = trip.items.filter(i => i.type === 'travel' || i.type === 'activity').map(it => {
     const a = toMs(it.at), b = Math.max(toMs(it.until || it.at), a);
     return { it, a, top: y(a), height: Math.max(dur(b - a), pillW) };
   });
@@ -1176,7 +1183,7 @@ function renderTimeline() {
   for (const c of cards) {
     const last = blocks[blocks.length - 1];
     if (last && c.top < last.bottom + 5) { last.members.push(c); layoutBlock(last); }
-    else { const block = { top: c.top, members: [c] }; layoutBlock(block); blocks.push(block); }
+    else { const block = { members: [c] }; layoutBlock(block); blocks.push(block); }
   }
   // Only scroll sideways when something really doesn't fit.
   const needed = cardX + cardW + 6 + 14, wide = needed > scroller.clientWidth + 2;
@@ -1185,8 +1192,8 @@ function renderTimeline() {
 
   stackState = { track, blocks, byItem: new Map(), open: null, baseHeight: height };
   for (const block of blocks) {
-    const n = block.members.length, hidden = n - Math.min(n, MAX_FAN);
-    block.members.forEach((c, i) => {
+    const n = block.members.length;
+    block.members.forEach(c => {
       stackState.byItem.set(c.it.id, block);
       const place = placeAt(segs, c.a);
       const color = place.name ? placeColor(place.name) : '#aeaeb2';
@@ -1204,8 +1211,7 @@ function renderTimeline() {
           headingNodes(c.it),
           h('span.meta', {}, metaNodes(c.it)),
           warn && h('span.meta.warn', {}, `You're in ${warn} before this`),
-          links.length > 0 && h('span.meta', {}, links)),
-        hidden > 0 && i === n - 1 && h('span.stack-count', { title: `${hidden} more under this one` }, `+${hidden}`));
+          links.length > 0 && h('span.meta', {}, links)));
       track.append(c.el);
       if (n > 1) {
         c.label = c.el.getAttribute('aria-label');
