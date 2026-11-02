@@ -478,6 +478,27 @@ function mapControls(getAddress) {
   return { el: root, update };
 }
 
+// Stay pictures are kept between redraws (every zoom step redraws the timeline), so they never reload or flash.
+const photoCache = new Map(); // "item id|address" -> <img>, or 'failed'
+function stayPhoto(item, url, used) {
+  if (!url) return null;
+  const key = `${item.id}|${url}`;
+  used.add(key);
+  let photo = photoCache.get(key);
+  if (photo === 'failed') return null;
+  if (!photo) {
+    photo = h('img.stay-photo', { src: url, alt: '', loading: 'lazy', decoding: 'async', referrerpolicy: 'no-referrer' });
+    photo.addEventListener('error', () => { // a picture that won't load just disappears
+      photoCache.set(key, 'failed');
+      const stay = photo.parentElement;
+      photo.remove();
+      stay?.classList.remove('has-photo');
+    });
+    photoCache.set(key, photo);
+  }
+  return photo;
+}
+
 // Pictures only load over https; anything else is ignored.
 function imageUrl(u) {
   const text = (u || '').trim();
@@ -889,6 +910,7 @@ function showTrip(record, viewOnly) {
 }
 
 function commit() {
+  for (const [key, value] of photoCache) if (value === 'failed') photoCache.delete(key); // any edit gives a failed picture another try
   rec.dirty = true;
   saveRecord(rec);
   renderTimeline();
@@ -1150,16 +1172,13 @@ function renderTimeline() {
   const stayLanes = assignLanes(stays, 2);
   const pillsEnd = pillLanes ? pillX + pillLanes * (pillW + 4) - 4 : 0;
   const stayX = pillLanes ? pillsEnd + PILL_GAP : gutter + lineW + 8;
+  const usedPhotos = new Set();
   for (const s of stays) {
     const place = placeAt(segs, s.a).name;
     const color = place ? placeColor(place) : '#aeaeb2';
     const links = itemLinks(s.it, 'Link');
-    const picture = imageUrl(s.it.image);
-    const photo = picture && h('img.stay-photo', {
-      src: picture, alt: '', loading: 'lazy', decoding: 'async', referrerpolicy: 'no-referrer',
-      onerror() { photo.remove(); stay.classList.remove('has-photo'); }, // a picture that won't load just disappears
-    });
-    const stay = itemNode(`.stay${picture ? '.has-photo' : ''}`, s.it, {
+    const photo = stayPhoto(s.it, imageUrl(s.it.image), usedPhotos);
+    const stay = itemNode(`.stay${photo ? '.has-photo' : ''}`, s.it, {
       left: px(stayX + s.lane * (stayW + 4)), top: px(s.top), width: px(stayW), height: px(s.height),
       'border-color': color, '--stay-bg': `color-mix(in oklch, ${color} var(--stay-mix), var(--bg))`,
     }, photo, h('span.stay-inner', {},
@@ -1169,6 +1188,7 @@ function renderTimeline() {
       links.length > 0 && !mobile && h('small', {}, ' ', links)));
     track.append(stay);
   }
+  for (const key of photoCache.keys()) if (!usedPhotos.has(key)) photoCache.delete(key);
 
   // Everything else gets a card, connected to the line by a tick
   const cardX = stayLanes ? stayX + stayLanes * (stayW + 4) + 16 : pillLanes ? pillsEnd + PILL_GAP : stayX + 16;
