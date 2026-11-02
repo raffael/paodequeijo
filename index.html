@@ -808,7 +808,7 @@ async function saveToGitHub(rec, token) {
   if (rec.gistId) {
     const current = await github('GET', `/gists/${rec.gistId}?_=${Date.now()}`, token);
     if (rec.gistUpdatedAt && current.updated_at !== rec.gistUpdatedAt &&
-        !confirm('This trip was changed on GitHub since you last opened it, possibly from another device. Replace that version with yours?')) {
+        !confirm('The shared trip was changed from another device after you last opened it. If you save now, those changes are replaced by your version, and this app cannot bring them back. Replace them?')) {
       return false;
     }
     gist = await github('PATCH', `/gists/${rec.gistId}`, token, { files });
@@ -1056,7 +1056,7 @@ function applyRemote(record, trip, updatedAt) {
 }
 function showSyncNotice(record, trip, updatedAt) {
   document.querySelector('.sync-notice')?.remove();
-  const notice = h('.notice.sync-notice', {}, 'This trip was also changed on another device. Your unsaved edits here are kept.',
+  const notice = h('.notice.sync-notice', {}, 'This trip was also changed on another device. Your unsaved edits here are kept. If you save them, the other device’s changes will be replaced.',
     h('button', { type: 'button', onclick() { applyRemote(record, trip, updatedAt); } }, 'Use the other version'),
     h('button', { type: 'button', onclick() { dismissedRemote = updatedAt; notice.remove(); } }, 'Keep mine'));
   app.querySelector('.toolbar')?.after(notice);
