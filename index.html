@@ -168,7 +168,7 @@
   .toolbar .trip-dates { padding: 1px 8px; margin: 0; border-radius: 6px; font-size: 13px; font-weight: 400; line-height: 1.4; text-align: left; color: var(--text-secondary); }
   .trip-dates b { font-weight: 600; color: var(--text); }
   .toolbar input.title:hover { background: var(--fill-weak); }
-  .status { color: var(--text-secondary); font-size: 12px; }
+  .status { color: var(--text-secondary); font-size: 12px; margin-left: auto; }
   .save-actions { display: flex; gap: 6px; align-items: center; }
   .unsaved { margin-right: 4px; font-size: 13px; font-weight: 700; color: var(--danger); }
   .zoom-dock { position: fixed; right: 18px; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); z-index: 6; display: flex; align-items: center; gap: 6px; padding: 5px; border-radius: 999px;
@@ -363,6 +363,7 @@
     .stay-icon { display: block; }
     .stay .item-kind, .stay .item-title, .stay small { display: none; }
     .status { display: none; }
+    .toolbar .status + * { margin-left: auto; } /* the buttons wrap onto their own row: keep them right-aligned */
     .toolbar .title, .toolbar strong.title { font-size: 18px; }
     .zoom-dock input { width: 90px; }
     dialog { max-height: calc(100dvh - 24px); }
