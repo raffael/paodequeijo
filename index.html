@@ -59,6 +59,8 @@
     --edge-mix: #000;
     --stay-mix: 28%;
     --pill-mix: 25%;
+    --card-tint: 14%;
+    --card-keep: 62%;
     --gutter: 130px;
     --line-width: 54px;
   }
@@ -91,6 +93,8 @@
     --edge-mix: #fff;
     --stay-mix: 18%;
     --pill-mix: 16%;
+    --card-tint: 20%;
+    --card-keep: 75%;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
@@ -210,8 +214,15 @@
   .pill.status-planned { border-style: dashed; background: var(--pill-tint); }
   .pill:hover { box-shadow: 0 1px 6px rgb(0 0 0 / .3); }
   .pill.status-suggestion:hover { opacity: .85; }
-  .card { z-index: 4; display: flex; gap: 9px; align-items: flex-start; padding: calc(8px + var(--grow)) calc(10px + var(--grow)); overflow: hidden; background: var(--bg); border: 1px solid var(--card-border); border-radius: 10px; box-shadow: 0 1px 2px rgb(0 0 0 / .06); }
-  .card.flag { background: var(--accent-tint); border-color: var(--accent); }
+  /* Like an event in a calendar app: a soft tint of the item's colour, and a rounded bar on the left whose end caps
+     are concentric with the box's rounded corners (cap centre = corner centre). The label takes the bar's colour. */
+  .card { --item-color: var(--accent); --card-accent: color-mix(in oklch, var(--item-color) var(--card-keep), var(--edge-mix));
+          z-index: 4; display: flex; gap: 9px; align-items: flex-start; overflow: hidden;
+          padding: calc(8px + var(--grow)) calc(10px + var(--grow)) calc(8px + var(--grow)) calc(18px + var(--grow));
+          background: color-mix(in oklch, var(--item-color) var(--card-tint), var(--bg)); border-radius: 8px; }
+  .card::before { content: ''; position: absolute; left: calc(6px + var(--grow)); top: calc(6px + var(--grow)); bottom: calc(6px + var(--grow)); width: 4px; border-radius: 2px; background: var(--card-accent); pointer-events: none; }
+  .card.status-planned::after { content: ''; position: absolute; inset: 0; border: 1.5px dashed var(--card-accent); border-radius: inherit; pointer-events: none; }
+  .card .item-kind, .card .item-kind.alone { color: var(--card-accent); }
   .card .text { min-width: 0; flex: 1; }
   .card .item-kind, .card .item-title, .card .meta { display: block; overflow: hidden; text-overflow: ellipsis; }
   .card .item-kind, .card .meta { white-space: nowrap; }
@@ -220,23 +231,20 @@
   .item-title { display: block; font-size: 13px; font-weight: 400; }
   .item-title b { font-weight: 600; }
   .meta b { font-weight: 600; color: var(--text); }
-  .card .meta { font-size: 12px; color: var(--text-secondary); }
+  .card .meta { font-size: 12px; color: color-mix(in oklch, var(--text-secondary) 70%, var(--text)); }
   .card .warn { color: var(--danger); }
-  .card.compact { padding: calc(2px + var(--grow)) calc(8px + var(--grow)); align-items: center; }
+  .card.compact { padding: calc(2px + var(--grow)) calc(8px + var(--grow)) calc(2px + var(--grow)) calc(16px + var(--grow)); align-items: center; }
   .card.compact .text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .card.compact .item-kind, .card.compact .item-title { display: inline; }
   .card.compact .item-title { white-space: nowrap; }
   .card.compact .item-kind { margin-right: 5px; }
   .card.compact .meta { display: none; }
-  .card.status-planned { border: 1.5px dashed #8e8e93; }
-  .card.linked { border-width: 1.5px; }
-  .card.flag.status-planned { border-color: var(--accent); }
   .stay.status-planned, .marker.status-planned { border-style: dashed; }
   .status-suggestion { opacity: .5; }
   .card.status-suggestion:hover, .stay.status-suggestion:hover,
   .card.status-suggestion:focus-visible, .stay.status-suggestion:focus-visible { opacity: .85; }
   .card:hover, .stay:hover { box-shadow: 0 2px 8px rgb(0 0 0 / .14); }
-  @property --grow { syntax: '<length>'; inherits: false; initial-value: 0px; }
+  @property --grow { syntax: '<length>'; inherits: true; initial-value: 0px; } /* inherited, so the bar inside a box sees it too */
   @property --h { syntax: '<length>'; inherits: false; initial-value: 0px; }
   /* A box grows outwards on hover while its padding grows by the same amount, so the text inside never moves. */
   .card { left: calc(var(--x) - var(--grow)); top: calc(var(--y) - var(--grow)); width: calc(var(--w) + 2 * var(--grow)); height: calc(var(--h) + 2 * var(--grow));
@@ -245,7 +253,7 @@
   .pill { left: calc(var(--x) - var(--grow, 0px)); top: calc(var(--y) - var(--grow, 0px)); width: calc(var(--w) + 2 * var(--grow, 0px)); height: calc(var(--h) + 2 * var(--grow, 0px));
           transition: left .15s, top .15s, width .15s, height .15s, box-shadow .15s; }
   /* a collapsed stack shows its boxes as one-line headers */
-  .card.in-stack:not(.open) { padding: calc(2px + var(--grow)) calc(8px + var(--grow)); align-items: center; }
+  .card.in-stack:not(.open) { padding: calc(2px + var(--grow)) calc(8px + var(--grow)) calc(2px + var(--grow)) calc(16px + var(--grow)); align-items: center; }
   .card.in-stack:not(.open) .text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .card.in-stack:not(.open) .item-kind, .card.in-stack:not(.open) .item-title { display: inline; }
   .card.in-stack:not(.open) .item-title { white-space: nowrap; }
@@ -1202,7 +1210,7 @@ function renderTimeline() {
   const cards = trip.items.filter(i => i.type !== 'stay').map(it => {
     const a = toMs(it.at), b = Math.max(toMs(it.until || it.at), a), linked = pillOf.has(it.id);
     const title = titleText(it);
-    const titleLines = !title ? 0 : compact ? 1 : textLines(title, 600, 13, cardW - 24);
+    const titleLines = !title ? 0 : compact ? 1 : textLines(title, 600, 13, cardW - 32);
     const lines = 2 + titleLines + (mismatches[it.id] ? 1 : 0) + (safeUrl(it.url) || mapQuery(it.address) ? 1 : 0);
     const top = linked ? y(a) : Math.max(y(a) - 15, 0); // a box with a capsule lines up with it
     return { it, a, linked, top, height: Math.max(dur(b - a) + (linked ? 0 : 15), compact ? 30 : 20 + lines * 17) };
@@ -1233,7 +1241,7 @@ function renderTimeline() {
         track.append(c.tick);
       }
       const style = { '--x': px(cardX), '--y': px(c.cTop), '--w': px(cardW), '--h': px(c.cHeight) };
-      if (c.linked) { style['border-color'] = itemColor(c.it); style['--item-color'] = itemColor(c.it); } // same colour as its capsule
+      if (c.linked) style['--item-color'] = itemColor(c.it); // the same colour as its capsule
       c.el = itemNode(`${flag ? '.card.flag' : '.card'}${c.linked ? '.linked' : ''}${compact ? '.compact' : ''}${n > 1 ? '.in-stack' : ''}`, c.it, style,
         h('span.text', {},
           headingNodes(c.it),
