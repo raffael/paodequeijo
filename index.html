@@ -113,8 +113,11 @@
   #app { height: 100dvh; display: flex; flex-direction: column; }
   h1, h2 { margin: 0; line-height: 1.2; font-weight: 600; }
   a { color: var(--accent); text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  :focus-visible { outline: 3px solid rgb(0 113 227 / .4); outline-offset: 1px; }
+  a:not(.button):hover { text-decoration: underline; }
+  /* No blue focus rings. Clicking never draws one; keyboard focus shows as a thin neutral outline so it can still be found. */
+  :focus { outline: none; }
+  :focus-visible { outline: 2px solid color-mix(in srgb, var(--text) 28%, transparent); outline-offset: 2px; }
+  dialog:focus-visible, .dialog-body:focus-visible, .scroller:focus-visible, input[type=text]:focus-visible, input:not([type]):focus-visible, input[type=password]:focus-visible, input[type=date]:focus-visible, input[type=datetime-local]:focus-visible, textarea:focus-visible { outline: none; }
 
   button, .button {
     font: inherit; font-weight: 500; color: var(--accent); cursor: pointer; text-decoration: none; display: inline-block;
@@ -131,7 +134,8 @@
     font: inherit; color: inherit; width: 100%; padding: 7px 10px;
     border: 1px solid var(--border); border-radius: 8px; background: var(--field-bg, var(--bg));
   }
-  input:focus, textarea:focus { outline: 3px solid rgb(0 113 227 / .3); outline-offset: 0; border-color: var(--accent); }
+  input:focus, textarea:focus { outline: none; border-color: var(--text-tertiary); } /* a darker edge instead of a ring */
+  textarea { resize: vertical; }
   input::placeholder, textarea::placeholder { color: var(--text-tertiary); }
   label.field { display: block; margin-bottom: 12px; font-weight: 500; font-size: 12px; color: var(--text-secondary); }
   label.field input, label.field textarea { margin-top: 4px; font-weight: 400; font-size: 14px; color: var(--text); }
@@ -171,7 +175,6 @@
                background: var(--bar-bg); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
                box-shadow: 0 0 0 .5px var(--separator), 0 4px 16px rgb(0 0 0 / .14); }
   .zoom-dock input { width: 110px; padding: 0; border: 0; background: transparent; accent-color: var(--accent); }
-  .zoom-dock input:focus { outline: revert; }
   .zoom-button { width: 28px; height: 28px; padding: 0; border-radius: 50%; display: grid; place-items: center; }
   .zoom-button .glyph { width: 16px; height: 16px; margin: 0; vertical-align: top; }
   .notice { padding: 8px 14px; background: var(--bg-grouped); border-bottom: 1px solid var(--separator); font-size: 13px; color: var(--text-secondary); display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
@@ -312,7 +315,7 @@
   .choices span { display: block; padding: 4px 10px; background: var(--fill); border-radius: 8px; font-size: 13px; }
   .choices label:hover span { background: var(--fill-hover); }
   .choices input:checked + span { background: var(--accent); color: #fff; font-weight: 500; }
-  .choices input:focus-visible + span { outline: 3px solid rgb(0 113 227 / .4); }
+  .choices input:focus-visible + span { outline: 2px solid color-mix(in srgb, var(--text) 28%, transparent); outline-offset: 2px; }
   .map-controls { margin-bottom: 12px; }
   .map-controls .hint { margin: 6px 0 0; }
   .map-frame { display: block; width: 100%; height: 220px; margin-top: 10px; border: 0; border-radius: 10px; background: var(--bg-grouped); }
