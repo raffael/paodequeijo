@@ -233,7 +233,8 @@
   .card.status-suggestion:hover, .stay.status-suggestion:hover,
   .card.status-suggestion:focus-visible, .stay.status-suggestion:focus-visible { opacity: .85; }
   .card:hover, .stay:hover { box-shadow: 0 2px 8px rgb(0 0 0 / .14); }
-  .card { transition: transform .32s cubic-bezier(.2,.8,.2,1), height .32s cubic-bezier(.2,.8,.2,1), box-shadow .15s; }
+  .card { left: calc(var(--x) - var(--grow, 0px)); top: calc(var(--y) - var(--grow, 0px)); width: calc(var(--w) + 2 * var(--grow, 0px)); height: calc(var(--h) + 2 * var(--grow, 0px));
+          transition: transform .32s cubic-bezier(.2,.8,.2,1), height .32s cubic-bezier(.2,.8,.2,1), left .15s, top .15s, width .15s, box-shadow .15s; }
   .tick { transition: transform .32s cubic-bezier(.2,.8,.2,1); }
   .pill { left: calc(var(--x) - var(--grow, 0px)); top: calc(var(--y) - var(--grow, 0px)); width: calc(var(--w) + 2 * var(--grow, 0px)); height: calc(var(--h) + 2 * var(--grow, 0px));
           transition: left .15s, top .15s, width .15s, height .15s, box-shadow .15s; }
@@ -246,7 +247,8 @@
   .card.in-stack:not(.open) .meta { display: none; }
   /* a capsule and its box light up together */
   .pill.hot { --grow: 2px; box-shadow: 0 0 0 2px color-mix(in oklch, var(--pill-bg) 22%, transparent), 0 1px 4px rgb(0 0 0 / .15); }
-  .card.hot { box-shadow: 0 0 0 2px color-mix(in oklch, var(--item-color) 22%, transparent), 0 3px 10px rgb(0 0 0 / .12); }
+  .card.hot { --grow: 2px; box-shadow: 0 0 0 2px color-mix(in oklch, var(--item-color) 22%, transparent), 0 3px 10px rgb(0 0 0 / .12);
+              transition: transform .32s cubic-bezier(.2,.8,.2,1), height .15s, left .15s, top .15s, width .15s, box-shadow .15s; }
 
   .guide { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid var(--accent); z-index: 5; pointer-events: none; }
   .guide i { position: absolute; left: calc(var(--gutter) + var(--line-width) / 2 - 12px); top: -13px; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: var(--accent); color: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / .3); font-size: 17px; font-style: normal; font-weight: 500; line-height: 1; }
@@ -1059,7 +1061,7 @@ function setStackOpen(open) {
       m.el.style.transform = t;
       if (m.tick) m.tick.style.transform = t;
       if (!stacked) continue;
-      m.el.style.height = px(isOpen ? m.height : m.cHeight);
+      m.el.style.setProperty('--h', px(isOpen ? m.height : m.cHeight));
       m.el.classList.toggle('open', isOpen);
       m.el.setAttribute('aria-expanded', String(isOpen));
       m.el.setAttribute('aria-label', stackLabel(m, block, isOpen));
@@ -1204,7 +1206,7 @@ function renderTimeline() {
         c.tick = h(`.tick.status-${statusOf(c.it)}`, { style: { left: px(gutter + lineW), top: px(c.cTop + 14), width: px(cardX - gutter - lineW), background: color } });
         track.append(c.tick);
       }
-      const style = { left: px(cardX), top: px(c.cTop), width: px(cardW), height: px(c.cHeight) };
+      const style = { '--x': px(cardX), '--y': px(c.cTop), '--w': px(cardW), '--h': px(c.cHeight) };
       if (c.linked) { style['border-color'] = itemColor(c.it); style['--item-color'] = itemColor(c.it); } // same colour as its capsule
       c.el = itemNode(`${flag ? '.card.flag' : '.card'}${c.linked ? '.linked' : ''}${compact ? '.compact' : ''}${n > 1 ? '.in-stack' : ''}`, c.it, style,
         h('span.text', {},
