@@ -233,6 +233,16 @@
   .card.status-suggestion:hover, .stay.status-suggestion:hover,
   .card.status-suggestion:focus-visible, .stay.status-suggestion:focus-visible { opacity: .85; }
   .card:hover, .stay:hover { box-shadow: 0 2px 8px rgb(0 0 0 / .14); }
+  .card { transition: transform .32s cubic-bezier(.2,.8,.2,1), height .32s cubic-bezier(.2,.8,.2,1), box-shadow .15s; }
+  .tick { transition: transform .32s cubic-bezier(.2,.8,.2,1); }
+  .pill { transition: transform .15s, box-shadow .15s; }
+  .card.in-stack:not(.open).status-suggestion { opacity: 1; }
+  .card.in-stack:not(.open).status-suggestion > * { opacity: .5; }
+  .stack-count { position: absolute; top: 7px; right: 8px; padding: 0 7px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 18px; color: var(--text-secondary); background: var(--fill); }
+  .card.open .stack-count { display: none; }
+  /* a capsule and its box light up together */
+  .pill.hot { transform: scale(1.35); box-shadow: 0 0 0 3px color-mix(in oklch, var(--pill-bg) 35%, transparent), 0 2px 8px rgb(0 0 0 / .25); }
+  .card.hot { box-shadow: 0 0 0 3px color-mix(in oklch, var(--item-color) 35%, transparent), 0 6px 18px rgb(0 0 0 / .18); }
 
   .guide { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid var(--accent); z-index: 5; pointer-events: none; }
   .guide i { position: absolute; left: calc(var(--gutter) + var(--line-width) / 2 - 12px); top: -13px; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: var(--accent); color: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / .3); font-size: 17px; font-style: normal; font-weight: 500; line-height: 1; }
@@ -830,6 +840,7 @@ function showTrip(record, viewOnly) {
   statusEl = h('span.status');
   saveArea = h('.save-actions');
   scroller = h('.scroller', { tabIndex: 0, 'aria-label': 'Trip timeline' });
+  scroller.addEventListener('click', e => { if (stackState?.open && !e.target.closest('.card.open')) setStackOpen(null); });
   scroller.addEventListener('wheel', e => {
     if (!e.ctrlKey && !e.metaKey) return; // trackpad pinch arrives as ctrl+wheel
     e.preventDefault();
@@ -1011,6 +1022,50 @@ function assignLanes(entries, gap) {
   return laneEnds.length;
 }
 
+// Boxes that would collide are drawn as a stack: the first ones fanned out so their headers show, the rest tucked
+// behind the last one. Clicking a stack spreads it out and pushes everything below it down.
+const FAN = 44, MAX_FAN = 3, OPEN_GAP = 8;
+let stackState = null;
+function layoutBlock(block) {
+  const { members } = block, n = members.length, visible = Math.min(n, MAX_FAN);
+  members.forEach((m, i) => {
+    m.cTop = block.top + Math.min(i, visible - 1) * FAN;
+    m.cHeight = i === n - 1 ? m.height : Math.min(m.height, FAN + 12);
+  });
+  const front = members[n - 1];
+  block.bottom = front.cTop + front.height;
+  let next = block.top;
+  for (const m of members) { m.oTop = next; next += m.height + OPEN_GAP; }
+  block.extra = Math.max(0, next - OPEN_GAP - block.bottom);
+}
+const stackLabel = (m, block, open) => open ? m.label : `${m.label}, one of ${block.members.length} overlapping items. Activate to show them all`;
+function setStackOpen(open) {
+  const st = stackState;
+  if (!st || st.open === open) return;
+  st.open = open;
+  let shift = 0;
+  for (const block of st.blocks) {
+    const isOpen = block === open, stacked = block.members.length > 1;
+    for (const m of block.members) {
+      const dy = shift + (isOpen ? m.oTop - m.cTop : 0), t = dy ? `translateY(${dy}px)` : '';
+      m.el.style.transform = t;
+      if (m.tick) m.tick.style.transform = t;
+      if (!stacked) continue;
+      m.el.style.height = px(isOpen ? m.height : m.cHeight);
+      m.el.classList.toggle('open', isOpen);
+      m.el.setAttribute('aria-expanded', String(isOpen));
+      m.el.setAttribute('aria-label', stackLabel(m, block, isOpen));
+    }
+    if (isOpen) shift += block.extra;
+  }
+  st.track.style.height = px(st.baseHeight + (open ? open.extra : 0));
+}
+function activate(item) {
+  const block = stackState?.byItem.get(item.id);
+  if (block && block.members.length > 1 && stackState.open !== block) return setStackOpen(block);
+  if (readOnly) openDetails(item); else openItemDialog(item);
+}
+
 function renderTimeline() {
   const trip = rec.trip, T0 = tripStart(trip), T1 = tripEnd(trip);
   const days = dayCount();
@@ -1107,48 +1162,56 @@ function renderTimeline() {
   // Everything else gets a card, connected to the line by a tick
   const cardX = stayX + (stayLanes ? stayLanes * (stayW + 4) : 0) + 16;
   const avail = scroller.clientWidth - cardX - 14;
+  const cardW = clamp(avail - 6, Math.min(170, avail), 340);
   const cards = trip.items.filter(i => i.type !== 'stay').map(it => {
-    const a = toMs(it.at), b = Math.max(toMs(it.until || it.at), a);
-    return { it, a, b, linked: pillOf.has(it.id) }; // a box with a capsule lines up with it, and has no connector
-  });
-  // Titles wrap, so a box's height depends on its width, which depends on how many columns the heights need.
-  let laneW = 340, cardLanes = 1;
-  for (let pass = 0; pass < 5; pass++) {
-    for (const c of cards) {
-      const title = titleText(c.it);
-      const titleLines = !title ? 0 : compact ? 1 : textLines(title, 600, 13, laneW - 24);
-      const lines = 2 + titleLines + (mismatches[c.it.id] ? 1 : 0) + (safeUrl(c.it.url) || mapQuery(c.it.address) ? 1 : 0);
-      c.y = y(c.a);
-      c.top = c.linked ? c.y : Math.max(c.y - 15, 0);
-      c.height = Math.max(dur(c.b - c.a) + (c.linked ? 0 : 15), compact ? 30 : 20 + lines * 17);
-    }
-    cardLanes = Math.max(assignLanes(cards, 5), 1);
-    const next = clamp(avail / cardLanes - 6, Math.min(mobile ? 100 : 170, avail), 340); // on phones, overlapping boxes may get narrower before anything scrolls sideways
-    if (Math.abs(next - laneW) < .5) break;
-    laneW = next;
+    const a = toMs(it.at), b = Math.max(toMs(it.until || it.at), a), linked = pillOf.has(it.id);
+    const title = titleText(it);
+    const titleLines = !title ? 0 : compact ? 1 : textLines(title, 600, 13, cardW - 24);
+    const lines = 2 + titleLines + (mismatches[it.id] ? 1 : 0) + (safeUrl(it.url) || mapQuery(it.address) ? 1 : 0);
+    const top = linked ? y(a) : Math.max(y(a) - 15, 0); // a box with a capsule lines up with it
+    return { it, a, linked, top, height: Math.max(dur(b - a) + (linked ? 0 : 15), compact ? 30 : 20 + lines * 17) };
+  }).sort((p, q) => p.a - q.a || p.top - q.top);
+  const blocks = [];
+  for (const c of cards) {
+    const last = blocks[blocks.length - 1];
+    if (last && c.top < last.bottom + 5) { last.members.push(c); layoutBlock(last); }
+    else { const block = { top: c.top, members: [c] }; layoutBlock(block); blocks.push(block); }
   }
   // Only scroll sideways when something really doesn't fit.
-  const needed = cardX + cardLanes * (laneW + 6) + 14, wide = needed > scroller.clientWidth + 2;
+  const needed = cardX + cardW + 6 + 14, wide = needed > scroller.clientWidth + 2;
   track.style.width = wide ? px(needed) : '';
   scroller.style.overflowX = wide ? 'auto' : 'hidden';
 
-  for (const c of cards) {
-    const x = cardX + c.lane * (laneW + 6);
-    const place = placeAt(segs, c.a);
-    const color = place.name ? placeColor(place.name) : '#aeaeb2';
-    const flag = c.it.type === 'start' || c.it.type === 'end';
-    const warn = mismatches[c.it.id];
-    const links = itemLinks(c.it, 'Open link');
-    if (!c.linked) track.append(h(`.tick.status-${statusOf(c.it)}`, { style: { left: px(gutter + lineW), top: px(c.y - 1), width: px(x - gutter - lineW), background: color } }));
-    const style = { left: px(x), top: px(c.top), width: px(laneW), height: px(c.height) };
-    if (c.linked) style['border-color'] = itemColor(c.it); // same colour as its capsule
-    track.append(itemNode(`${flag ? '.card.flag' : '.card'}${c.linked ? '.linked' : ''}`, c.it, style,
-      h('span.text', {},
-        headingNodes(c.it),
-        h('span.meta', {}, metaNodes(c.it)),
-        warn && h('span.meta.warn', {}, `You're in ${warn} before this`),
-        links.length > 0 && h('span.meta', {}, links))));
-    if (compact) track.lastChild.classList.add('compact');
+  stackState = { track, blocks, byItem: new Map(), open: null, baseHeight: height };
+  for (const block of blocks) {
+    const n = block.members.length, hidden = n - Math.min(n, MAX_FAN);
+    block.members.forEach((c, i) => {
+      stackState.byItem.set(c.it.id, block);
+      const place = placeAt(segs, c.a);
+      const color = place.name ? placeColor(place.name) : '#aeaeb2';
+      const flag = c.it.type === 'start' || c.it.type === 'end';
+      const warn = mismatches[c.it.id];
+      const links = itemLinks(c.it, 'Open link');
+      if (!c.linked) {
+        c.tick = h(`.tick.status-${statusOf(c.it)}`, { style: { left: px(gutter + lineW), top: px(c.cTop + 14), width: px(cardX - gutter - lineW), background: color } });
+        track.append(c.tick);
+      }
+      const style = { left: px(cardX), top: px(c.cTop), width: px(cardW), height: px(c.cHeight) };
+      if (c.linked) { style['border-color'] = itemColor(c.it); style['--item-color'] = itemColor(c.it); } // same colour as its capsule
+      c.el = itemNode(`${flag ? '.card.flag' : '.card'}${c.linked ? '.linked' : ''}${compact ? '.compact' : ''}${n > 1 ? '.in-stack' : ''}`, c.it, style,
+        h('span.text', {},
+          headingNodes(c.it),
+          h('span.meta', {}, metaNodes(c.it)),
+          warn && h('span.meta.warn', {}, `You're in ${warn} before this`),
+          links.length > 0 && h('span.meta', {}, links)),
+        hidden > 0 && i === n - 1 && h('span.stack-count', { title: `${hidden} more under this one` }, `+${hidden}`));
+      track.append(c.el);
+      if (n > 1) {
+        c.label = c.el.getAttribute('aria-label');
+        c.el.setAttribute('aria-expanded', 'false');
+        c.el.setAttribute('aria-label', stackLabel(c, block, false));
+      }
+    });
   }
 
   const tint = c => `color-mix(in oklch, ${c} var(--pill-mix), var(--bg))`;
@@ -1169,12 +1232,23 @@ function renderTimeline() {
       'Point at the colored strip and click to add travel, stays and activities.'));
   }
 
+  // Hovering (or focusing) a capsule or its box lights up both.
+  const light = id => {
+    for (const e of track.querySelectorAll('.hot')) e.classList.remove('hot');
+    if (id) for (const e of track.querySelectorAll(`.pill[data-for="${CSS.escape(id)}"], .card.linked[data-id="${CSS.escape(id)}"]`)) e.classList.add('hot');
+  };
+  const pairOf = node => { const e = node.closest?.('.pill, .card.linked'); return e ? e.dataset.for || e.dataset.id : null; };
+  track.addEventListener('mouseover', e => light(pairOf(e.target)));
+  track.addEventListener('mouseleave', () => light(null));
+  track.addEventListener('focusin', e => light(pairOf(e.target)));
+  track.addEventListener('focusout', () => light(null));
+
   if (!readOnly) attachAddCursor(track, line, segs);
   scroller.replaceChildren(track);
 }
 
 function itemNode(spec, item, style, ...kids) {
-  const open = () => (readOnly ? openDetails(item) : openItemDialog(item));
+  const open = () => activate(item);
   return h(`${spec}.status-${statusOf(item)}`, {
     style, tabIndex: 0, role: 'button', 'data-id': item.id, 'aria-label': `${titleFor(item).replace(' → ', ' to ')}, ${metaFor(item)}, ${STATUSES[statusOf(item)][1]}`,
     onclick: open,
@@ -1506,6 +1580,7 @@ window.addEventListener('popstate', route);
 window.addEventListener('hashchange', route);
 window.addEventListener('resize', () => { if (rec && scroller?.isConnected) renderTimeline(); });
 window.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && stackState?.open && !document.querySelector('dialog[open]')) setStackOpen(null);
   if ((e.metaKey || e.ctrlKey) && e.key === 's' && rec && !readOnly) {
     e.preventDefault();
     if (document.querySelector('dialog[open]')) return;
