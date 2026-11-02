@@ -60,6 +60,7 @@
     --stay-mix: 28%;
     --pill-mix: 25%;
     --card-tint: 14%;
+    --card-stripe: 7%;
     --card-keep: 62%;
     --gutter: 130px;
     --line-width: 54px;
@@ -94,6 +95,7 @@
     --stay-mix: 18%;
     --pill-mix: 16%;
     --card-tint: 20%;
+    --card-stripe: 7%;
     --card-keep: 75%;
   }
   * { box-sizing: border-box; }
@@ -221,7 +223,10 @@
           padding: calc(8px + var(--grow)) calc(10px + var(--grow)) calc(8px + var(--grow)) calc(18px + var(--grow));
           background: color-mix(in oklch, var(--item-color) var(--card-tint), var(--bg)); border-radius: 8px; }
   .card::before { content: ''; position: absolute; left: calc(6px + var(--grow)); top: calc(6px + var(--grow)); bottom: calc(6px + var(--grow)); width: 4px; border-radius: 2px; background: var(--card-accent); pointer-events: none; }
-  .card.status-planned::after { content: ''; position: absolute; inset: 0; border: 1.5px dashed var(--card-accent); border-radius: inherit; pointer-events: none; }
+  /* planned (not booked yet): soft diagonal stripes in the box's own colour instead of an outline */
+  .card.status-planned { background: repeating-linear-gradient(135deg,
+      color-mix(in oklch, var(--item-color) var(--card-tint), var(--bg)) 0 7px,
+      color-mix(in oklch, var(--item-color) calc(var(--card-tint) + var(--card-stripe)), var(--bg)) 7px 14px); }
   .card .item-kind, .card .item-kind.alone { color: var(--card-accent); }
   .card .text { min-width: 0; flex: 1; }
   .card .item-kind, .card .item-title, .card .meta { display: block; overflow: hidden; text-overflow: ellipsis; }
