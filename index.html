@@ -260,7 +260,7 @@
   .card.in-stack:not(.open) .item-kind { margin-right: 5px; }
   .card.in-stack:not(.open) .meta { display: none; }
   /* a capsule and its box light up together */
-  .pill.hot { --grow: 2px; box-shadow: 0 0 0 2px color-mix(in oklch, var(--pill-bg) 22%, transparent), 0 1px 4px rgb(0 0 0 / .15); }
+  .pill.hot { z-index: 4; --grow: 2px; box-shadow: 0 0 0 2px color-mix(in oklch, var(--pill-bg) 22%, transparent), 0 1px 4px rgb(0 0 0 / .15); }
   .card.hot { --grow: 2px; box-shadow: 0 0 0 2px color-mix(in oklch, var(--item-color) 22%, transparent), 0 3px 10px rgb(0 0 0 / .12); }
 
   .guide { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid var(--accent); z-index: 5; pointer-events: none; }
@@ -1173,7 +1173,10 @@ function renderTimeline() {
     const a = toMs(it.at), b = Math.max(toMs(it.until || it.at), a);
     return { it, a, top: y(a), height: Math.max(dur(b - a), pillW) };
   });
-  const pillLanes = assignLanes(pills, 3);
+  // All capsules share one column. Where items collide they simply overlap (shorter ones on top, so they stay
+  // visible); zooming in pulls them apart.
+  pills.sort((p, q) => q.height - p.height || p.a - q.a);
+  const pillLanes = pills.length ? 1 : 0;
   const pillOf = new Map(pills.map(pl => [pl.it.id, pl]));
 
   // Stays sit in a column next to the capsules
@@ -1264,7 +1267,7 @@ function renderTimeline() {
       title: `${titleFor(it)}, ${metaFor(it)}`, 'aria-hidden': 'true', 'data-for': it.id,
       onclick() { if (readOnly) openDetails(it); else openItemDialog(it); },
       style: {
-        '--x': px(pillX + pl.lane * (pillW + 4)), '--y': px(pl.top), '--w': px(pillW), '--h': px(pl.height),
+        '--x': px(pillX), '--y': px(pl.top), '--w': px(pillW), '--h': px(pl.height),
         '--pill-bg': color, '--pill-tint': tint(color), '--pill-edge': `color-mix(in oklch, ${color} 60%, var(--edge-mix))`,
       },
     }));
