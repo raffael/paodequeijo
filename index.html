@@ -100,7 +100,10 @@
     color: var(--text);
     background: var(--bg);
     -webkit-font-smoothing: antialiased;
+    -webkit-user-select: none; user-select: none;
   }
+  /* text people typed, and anything they might want to copy */
+  input, textarea, .item-title, .meta b, .notes, .error, .toolbar strong.title { -webkit-user-select: text; user-select: text; }
   #app { height: 100dvh; display: flex; flex-direction: column; }
   h1, h2 { margin: 0; line-height: 1.2; font-weight: 600; }
   a { color: var(--accent); text-decoration: none; }
@@ -207,7 +210,7 @@
   .pill.status-planned { border-style: dashed; background: var(--pill-tint); }
   .pill:hover { box-shadow: 0 1px 6px rgb(0 0 0 / .3); }
   .pill.status-suggestion:hover { opacity: .85; }
-  .card { z-index: 4; display: flex; gap: 9px; align-items: flex-start; padding: 8px 10px; overflow: hidden; background: var(--bg); border: 1px solid var(--card-border); border-radius: 10px; box-shadow: 0 1px 2px rgb(0 0 0 / .06); }
+  .card { z-index: 4; display: flex; gap: 9px; align-items: flex-start; padding: calc(8px + var(--grow)) calc(10px + var(--grow)); overflow: hidden; background: var(--bg); border: 1px solid var(--card-border); border-radius: 10px; box-shadow: 0 1px 2px rgb(0 0 0 / .06); }
   .card.flag { background: var(--accent-tint); border-color: var(--accent); }
   .card .text { min-width: 0; flex: 1; }
   .card .item-kind, .card .item-title, .card .meta { display: block; overflow: hidden; text-overflow: ellipsis; }
@@ -219,7 +222,7 @@
   .meta b { font-weight: 600; color: var(--text); }
   .card .meta { font-size: 12px; color: var(--text-secondary); }
   .card .warn { color: var(--danger); }
-  .card.compact { padding: 2px 8px; align-items: center; }
+  .card.compact { padding: calc(2px + var(--grow)) calc(8px + var(--grow)); align-items: center; }
   .card.compact .text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .card.compact .item-kind, .card.compact .item-title { display: inline; }
   .card.compact .item-title { white-space: nowrap; }
@@ -233,13 +236,16 @@
   .card.status-suggestion:hover, .stay.status-suggestion:hover,
   .card.status-suggestion:focus-visible, .stay.status-suggestion:focus-visible { opacity: .85; }
   .card:hover, .stay:hover { box-shadow: 0 2px 8px rgb(0 0 0 / .14); }
-  .card { left: calc(var(--x) - var(--grow, 0px)); top: calc(var(--y) - var(--grow, 0px)); width: calc(var(--w) + 2 * var(--grow, 0px)); height: calc(var(--h) + 2 * var(--grow, 0px));
-          transition: transform .32s cubic-bezier(.2,.8,.2,1), height .32s cubic-bezier(.2,.8,.2,1), left .15s, top .15s, width .15s, box-shadow .15s; }
+  @property --grow { syntax: '<length>'; inherits: false; initial-value: 0px; }
+  @property --h { syntax: '<length>'; inherits: false; initial-value: 0px; }
+  /* A box grows outwards on hover while its padding grows by the same amount, so the text inside never moves. */
+  .card { left: calc(var(--x) - var(--grow)); top: calc(var(--y) - var(--grow)); width: calc(var(--w) + 2 * var(--grow)); height: calc(var(--h) + 2 * var(--grow));
+          transition: transform .32s cubic-bezier(.2,.8,.2,1), --h .32s cubic-bezier(.2,.8,.2,1), --grow .15s, box-shadow .15s; }
   .tick { transition: transform .32s cubic-bezier(.2,.8,.2,1); }
   .pill { left: calc(var(--x) - var(--grow, 0px)); top: calc(var(--y) - var(--grow, 0px)); width: calc(var(--w) + 2 * var(--grow, 0px)); height: calc(var(--h) + 2 * var(--grow, 0px));
           transition: left .15s, top .15s, width .15s, height .15s, box-shadow .15s; }
   /* a collapsed stack shows its boxes as one-line headers */
-  .card.in-stack:not(.open) { padding: 2px 8px; align-items: center; }
+  .card.in-stack:not(.open) { padding: calc(2px + var(--grow)) calc(8px + var(--grow)); align-items: center; }
   .card.in-stack:not(.open) .text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .card.in-stack:not(.open) .item-kind, .card.in-stack:not(.open) .item-title { display: inline; }
   .card.in-stack:not(.open) .item-title { white-space: nowrap; }
@@ -247,8 +253,7 @@
   .card.in-stack:not(.open) .meta { display: none; }
   /* a capsule and its box light up together */
   .pill.hot { --grow: 2px; box-shadow: 0 0 0 2px color-mix(in oklch, var(--pill-bg) 22%, transparent), 0 1px 4px rgb(0 0 0 / .15); }
-  .card.hot { --grow: 2px; box-shadow: 0 0 0 2px color-mix(in oklch, var(--item-color) 22%, transparent), 0 3px 10px rgb(0 0 0 / .12);
-              transition: transform .32s cubic-bezier(.2,.8,.2,1), height .15s, left .15s, top .15s, width .15s, box-shadow .15s; }
+  .card.hot { --grow: 2px; box-shadow: 0 0 0 2px color-mix(in oklch, var(--item-color) 22%, transparent), 0 3px 10px rgb(0 0 0 / .12); }
 
   .guide { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid var(--accent); z-index: 5; pointer-events: none; }
   .guide i { position: absolute; left: calc(var(--gutter) + var(--line-width) / 2 - 12px); top: -13px; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: var(--accent); color: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / .3); font-size: 17px; font-style: normal; font-weight: 500; line-height: 1; }
@@ -1281,7 +1286,11 @@ function itemNode(spec, item, style, ...kids) {
   const open = () => activate(item);
   return h(`${spec}.status-${statusOf(item)}`, {
     style, tabIndex: 0, role: 'button', 'data-id': item.id, 'aria-label': `${titleFor(item).replace(' → ', ' to ')}, ${metaFor(item)}, ${STATUSES[statusOf(item)][1]}`,
-    onclick: open,
+    onclick(e) {
+      const selection = getSelection(); // finishing a text selection inside a box is not a click on the box
+      if (selection && !selection.isCollapsed && e.currentTarget.contains(selection.anchorNode)) return;
+      open();
+    },
     onkeydown(e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } },
   }, ...kids);
 }
