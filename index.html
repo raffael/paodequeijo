@@ -315,6 +315,18 @@
   .home-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
   .home .home-head h1 { margin: 0; }
 
+  .debug-dock { position: fixed; left: 14px; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); z-index: 7; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+  .debug-button { padding: 3px 11px; border-radius: 999px; font-size: 12px; color: var(--text-secondary); background: var(--bar-bg); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); box-shadow: 0 0 0 .5px var(--separator); }
+  .debug-panel { width: 250px; padding: 12px 14px; border-radius: 14px; background: var(--menu-bg); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); box-shadow: 0 0 0 .5px var(--separator), 0 8px 28px rgb(0 0 0 / .2); }
+  .debug-panel[hidden] { display: none; }
+  .debug-title { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
+  .debug-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+  .debug-panel .hint { margin: 0; }
+  .switch { position: relative; flex: none; width: 38px; height: 22px; padding: 0; border-radius: 999px; background: var(--fill-hover); }
+  .switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / .3); transition: transform .15s; }
+  .switch.on { background: var(--accent); }
+  .switch.on::after { transform: translateX(16px); }
+
   @media (max-width: 640px) {
     :root { --gutter: 62px; --line-width: 30px; }
     .day-label { padding-left: 8px; padding-right: 2px; font-size: 11px; }
@@ -330,6 +342,7 @@
     .status { display: none; }
     .toolbar .title, .toolbar strong.title { font-size: 18px; }
     .zoom-dock input { width: 90px; }
+    .debug-dock { bottom: calc(68px + env(safe-area-inset-bottom, 0px)); } /* above the zoom controls */
     .toast { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); } /* above the zoom controls */
     /* iOS zooms the page when a field under 16px gets focus, and a zoomed page pans sideways */
     input, textarea, label.field input, label.field textarea { font-size: 16px; }
@@ -540,7 +553,9 @@ function imageUrl(u) {
 
 // Items get a color from their kind and name, not their times, so moving an item keeps its color.
 function itemColor(it) {
-  const hue = placeHash(`${it.type}|${it.mode || it.kind || ''}|${titleText(it)}`) % 360;
+  const seed = placeHash(`${it.type}|${it.mode || it.kind || ''}|${titleText(it)}`);
+  if (colorMode === 'harmonic') return harmonic(HARMONY_HUES[seed % HARMONY_HUES.length] + jitterOf(seed), .72, .12);
+  const hue = seed % 360;
   return `oklch(${hue > 70 && hue < 140 ? .8 : .7} .15 ${hue})`;
 }
 
@@ -552,10 +567,68 @@ function placeHash(name) {
   return (hash ^ (hash >>> 15)) >>> 0;
 }
 // A hash alone can give two places nearly the same color, so nudge hues that land too close within a trip.
+// ---- Colours ----
+// "Harmonic" (the default): every colour gets the same lightness and chroma, measured the way people see colour
+// (OKLCH), is pulled inside what an sRGB screen can show without clipping, and takes its hue from a short list of
+// well-spaced hues. Only the hue is random. "Classic" is the earlier fully random behaviour, kept for comparison
+// in the debug menu (open the page with ?debug).
+const HARMONY_HUES = [20, 48, 80, 135, 170, 205, 245, 275, 305, 340];
+const jitterOf = seed => ((seed >>> 8) % 9) - 4;
+const hueGap = (a, b) => { const d = Math.abs(a - b) % 360; return Math.min(d, 360 - d); };
+function oklchToLinearSrgb(L, C, hue) {
+  const a = C * Math.cos(hue * Math.PI / 180), b = C * Math.sin(hue * Math.PI / 180);
+  const l = (L + .3963377774 * a + .2158037573 * b) ** 3, m = (L - .1055613458 * a - .0638541728 * b) ** 3, s = (L - .0894841775 * a - 1.291485548 * b) ** 3;
+  return [4.0767416621 * l - 3.3077115913 * m + .2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - .3413193965 * s, -.0041960863 * l - .7034186147 * m + 1.707614701 * s];
+}
+const fitsSrgb = (L, C, hue) => oklchToLinearSrgb(L, C, hue).every(v => v >= -1e-4 && v <= 1 + 1e-4);
+function maxChroma(L, hue) {
+  let lo = 0, hi = .4;
+  for (let i = 0; i < 18; i++) { const mid = (lo + hi) / 2; if (fitsSrgb(L, mid, hue)) lo = mid; else hi = mid; }
+  return lo;
+}
+const harmonicCache = new Map();
+function harmonic(hue, L, C) {
+  hue = (hue + 360) % 360;
+  const key = `${hue}|${L}|${C}`;
+  if (!harmonicCache.has(key)) {
+    // A hue that can't be that colourful at this lightness (blues) may move up to .05 toward the lightness where it can.
+    let l = L, best = maxChroma(l, hue);
+    for (const dir of best < C ? [.01, -.01] : []) {
+      for (let i = 1; i <= 5; i++) { const c = maxChroma(L + dir * i, hue); if (c > best) { best = c; l = L + dir * i; } }
+    }
+    harmonicCache.set(key, `oklch(${l.toFixed(3)} ${Math.min(C, best * .97).toFixed(3)} ${hue.toFixed(1)})`);
+  }
+  return harmonicCache.get(key);
+}
+const harmonicPlace = name => { const seed = placeHash(name); return { hue: HARMONY_HUES[seed % HARMONY_HUES.length] + jitterOf(seed), dl: 0 }; };
+function assignHarmonicHues(names) {
+  const taken = []; // indexes into HARMONY_HUES, in the order they were handed out
+  for (const name of names) {
+    const key = placeKey(name);
+    if (placeHues.has(key)) continue;
+    const seed = placeHash(name);
+    let stop = seed % HARMONY_HUES.length;
+    const free = HARMONY_HUES.map((_, i) => i).filter(i => !taken.includes(i));
+    if (taken.includes(stop) && free.length) {
+      // take the free hue that is farthest from every hue in use, so a trip's places stay easy to tell apart
+      const room = i => Math.min(...taken.map(t => hueGap(HARMONY_HUES[i], HARMONY_HUES[t])));
+      stop = free.reduce((best, i) => room(i) > room(best) ? i : best, free[0]);
+    }
+    const again = taken.filter(t => t === stop).length; // once every hue is in use, vary the lightness instead
+    taken.push(stop);
+    placeHues.set(key, { hue: HARMONY_HUES[stop] + jitterOf(seed), dl: [0, .05, -.05][again % 3] });
+  }
+}
+const HUE_GRADIENTS = typeof CSS !== 'undefined' && CSS.supports('background-image', 'linear-gradient(in oklch, red, blue)');
+// Both ends of a journey share lightness and chroma, so blending along the hue keeps both constant all the way:
+// no grey dip in the middle, which a straight blend (the browser's default for these colours) leaves.
+const blend = (a, b) => colorMode === 'harmonic' && HUE_GRADIENTS ? `linear-gradient(in oklch, ${a}, ${b})` : `linear-gradient(${a}, ${b})`;
+
 let placeHues = new Map();
 function assignPlaceHues(segs) {
   placeHues = new Map();
   const names = segs.flatMap(s => (s.kind === 'transit' ? [s.from, s.to] : [s.name])).filter(Boolean);
+  if (colorMode === 'harmonic') return assignHarmonicHues(names);
   for (const name of names) {
     const key = placeKey(name);
     if (placeHues.has(key)) continue;
@@ -566,6 +639,7 @@ function assignPlaceHues(segs) {
   }
 }
 function placeColor(name) {
+  if (colorMode === 'harmonic') { const p = placeHues.get(placeKey(name)) ?? harmonicPlace(name); return harmonic(p.hue, .8 + p.dl, .1); }
   const hue = placeHues.get(placeKey(name)) ?? placeHash(name) % 360;
   const lightness = hue > 70 && hue < 140 ? 0.84 : 0.76; // yellows and greens turn muddy when darker
   return `oklch(${lightness} 0.13 ${hue})`;
@@ -609,13 +683,14 @@ function cleanTrip(data) {
   return { title: String(data.title || 'My trip'), startDate: data.startDate, endDate: data.endDate, items };
 }
 
-const STORE_KEY = 'paodequeijo.trips', TOKEN_KEY = 'paodequeijo.github-token', ZOOM_KEY = 'paodequeijo.zoom';
+const STORE_KEY = 'paodequeijo.trips', TOKEN_KEY = 'paodequeijo.github-token', ZOOM_KEY = 'paodequeijo.zoom', COLOR_KEY = 'paodequeijo.colors';
 const memory = {};
 const storage = {
   get(k) { try { return localStorage.getItem(k); } catch { return memory[k] ?? null; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch { memory[k] = v; } },
   remove(k) { try { localStorage.removeItem(k); } catch { delete memory[k]; } },
 };
+let colorMode = 'harmonic'; // set from storage right below the storage helper
 function loadRecords() {
   try { return JSON.parse(storage.get(STORE_KEY)) || {}; } catch { return {}; }
 }
@@ -764,9 +839,34 @@ function placeAt(segs, t) {
 let rec = null, readOnly = false, scroller = null, zoomInput = null, statusEl = null, datesEl = null, saveArea = null, saving = false;
 let pxPerDay = clamp(+storage.get(ZOOM_KEY) || 200, 40, 1200);
 
+// The debug menu shows only when the address has ?debug, and keeps showing while you move around the app.
+const DEBUG = new URLSearchParams(location.search).has('debug');
 function navigate(search) {
-  history.pushState(null, '', location.pathname + search);
+  const query = new URLSearchParams(search);
+  if (DEBUG) query.set('debug', '');
+  const text = query.toString().replace(/debug=(&|$)/, 'debug$1');
+  history.pushState(null, '', location.pathname + (text ? '?' + text : ''));
   route();
+}
+
+function setColorMode(mode) {
+  colorMode = mode;
+  storage.set(COLOR_KEY, mode);
+  if (rec && scroller?.isConnected) renderTimeline();
+  syncDebugMenu();
+}
+let syncDebugMenu = () => {};
+function debugMenu() {
+  const toggle = h('button.switch', { type: 'button', role: 'switch', 'aria-label': 'Harmonic colours', onclick() { setColorMode(colorMode === 'harmonic' ? 'classic' : 'harmonic'); } });
+  const panel = h('.debug-panel', {},
+    h('p.debug-title', {}, 'Debug'),
+    h('.debug-row', {}, h('span', {}, 'Harmonic colours'), toggle),
+    h('p.hint', {}, 'Off shows the earlier, fully random hues.'));
+  panel.hidden = true;
+  const button = h('button.debug-button', { type: 'button', 'aria-expanded': 'false', onclick() { panel.hidden = !panel.hidden; button.setAttribute('aria-expanded', String(!panel.hidden)); } }, 'Debug');
+  syncDebugMenu = () => { toggle.setAttribute('aria-checked', String(colorMode === 'harmonic')); toggle.classList.toggle('on', colorMode === 'harmonic'); };
+  syncDebugMenu();
+  return h('.debug-dock', {}, panel, button);
 }
 
 function route() {
@@ -1173,7 +1273,7 @@ function renderTimeline() {
       // roughly 8px per letter, plus margins
       if (dur(s.b - s.a) > s.name.length * 8 + 40) el.append(h('span.seg-label', {}, s.name));
     }
-    if (s.kind === 'transit') el.style.background = `linear-gradient(${placeColor(s.from)}, ${placeColor(s.to)})`;
+    if (s.kind === 'transit') el.style.background = blend(placeColor(s.from), placeColor(s.to));
     line.append(el);
   }
   track.append(line);
@@ -1646,6 +1746,8 @@ function openShareDialog() {
 
 /* ---------- Start ---------- */
 
+if (storage.get(COLOR_KEY) === 'classic') colorMode = 'classic';
+if (DEBUG) document.body.append(debugMenu());
 window.addEventListener('popstate', route);
 window.addEventListener('hashchange', route);
 window.addEventListener('resize', () => { if (rec && scroller?.isConnected) renderTimeline(); });
