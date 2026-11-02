@@ -153,12 +153,16 @@
 
   /* Toolbar */
   .toolbar {
-    display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; min-height: 68px;
-    padding: 8px 14px; background: var(--bar-bg); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
+    display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; min-height: 80px;
+    padding: 10px 14px; background: var(--bar-bg); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
     border-bottom: 1px solid var(--separator);
   }
   .toolbar .title { flex: 1 1 160px; min-width: 120px; font-size: 22px; font-weight: 600; border-color: transparent; padding: 3px 8px; background: transparent; }
   .toolbar strong.title { font-size: 22px; font-weight: 600; }
+  .title-block { flex: 1 1 160px; min-width: 120px; display: flex; flex-direction: column; align-items: flex-start; }
+  .toolbar .title-block .title { flex: none; width: 100%; min-width: 0; }
+  .toolbar .trip-dates { padding: 1px 8px; margin: 0; border-radius: 6px; font-size: 13px; font-weight: 400; line-height: 1.4; text-align: left; color: var(--text-secondary); }
+  .trip-dates b { font-weight: 600; color: var(--text); }
   .toolbar input.title:hover { background: var(--fill-weak); }
   .status { color: var(--text-secondary); font-size: 12px; }
   .save-actions { display: flex; gap: 6px; align-items: center; }
@@ -750,7 +754,7 @@ function placeAt(segs, t) {
 
 /* ---------- App state and pages ---------- */
 
-let rec = null, readOnly = false, scroller = null, zoomInput = null, statusEl = null, saveArea = null, saving = false;
+let rec = null, readOnly = false, scroller = null, zoomInput = null, statusEl = null, datesEl = null, saveArea = null, saving = false;
 let pxPerDay = clamp(+storage.get(ZOOM_KEY) || 200, 40, 1200);
 
 function navigate(search) {
@@ -883,6 +887,7 @@ function showTrip(record, viewOnly) {
     oninput() { setZoom(sliderToZoom(+zoomInput.value)); },
   });
   statusEl = h('span.status');
+  datesEl = readOnly ? h('span.trip-dates') : h('button.plain.trip-dates', { type: 'button', title: 'Change the trip dates', onclick: openDatesDialog });
   saveArea = h('.save-actions');
   scroller = h('.scroller', { tabIndex: 0, 'aria-label': 'Trip timeline' });
   scroller.addEventListener('click', e => { if (stackState?.open && !e.target.closest('.card.open')) setStackOpen(null); });
@@ -895,13 +900,14 @@ function showTrip(record, viewOnly) {
   app.replaceChildren(...[
     h('.toolbar', {},
       h('button.plain', { type: 'button', 'aria-label': 'Back to my trips', onclick() { navigate(''); } }, '🧳'),
-      readOnly
-        ? h('strong.title', { style: { flex: '1 1 160px' } }, rec.trip.title)
-        : h('input.title', {
-            value: rec.trip.title, 'aria-label': 'Trip name',
-            onchange(e) { rec.trip.title = e.target.value.trim() || 'My trip'; e.target.value = rec.trip.title; commit(); },
-          }),
-      !readOnly && h('button', { type: 'button', onclick: openDatesDialog }, 'Change dates'),
+      h('.title-block', {},
+        readOnly
+          ? h('strong.title', {}, rec.trip.title)
+          : h('input.title', {
+              value: rec.trip.title, 'aria-label': 'Trip name',
+              onchange(e) { rec.trip.title = e.target.value.trim() || 'My trip'; e.target.value = rec.trip.title; commit(); },
+            }),
+        datesEl),
       statusEl,
       h('.zoom', {},
         h('button', { type: 'button', 'aria-label': 'Zoom out', onclick() { setZoom(pxPerDay / 1.4); } }, '−'),
@@ -924,6 +930,7 @@ function showTrip(record, viewOnly) {
   ].filter(Boolean));
   app.classList.toggle('readonly', readOnly);
   renderTimeline();
+  updateDates();
   updateStatus();
 }
 
@@ -935,7 +942,16 @@ function commit() {
   updateStatus();
 }
 
+// "Your trip from Jun 11 to Jun 21", with the dates in bold. The year only shows when it isn't obvious.
+function updateDates() {
+  const short = (ms, year) => new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', ...(year && { year: 'numeric' }), timeZone: 'UTC' }).format(ms);
+  const a = toMs(rec.trip.startDate), b = toMs(rec.trip.endDate);
+  const years = [a, b].map(ms => new Date(ms).getUTCFullYear()), crossing = years[0] !== years[1];
+  datesEl.replaceChildren('Your trip from ', h('b', {}, short(a, crossing)), ' to ', h('b', {}, short(b, crossing || years[1] !== new Date().getFullYear())));
+}
+
 function updateStatus() {
+  if (rec && datesEl) updateDates();
   if (!rec || readOnly) return;
   statusEl.textContent = !rec.gistId ? 'Saved in this browser only' : rec.dirty ? 'Not saved to link yet' : 'All changes saved';
   saveArea.replaceChildren(...(rec.gistId ? [
