@@ -1031,7 +1031,8 @@ async function pullRemote(record, { force = false } = {}) {
   lastPull = Date.now();
   try {
     const { trip, updatedAt } = await loadFromGitHub(record.gistId, record.key, storage.get(TOKEN_KEY));
-    if (rec !== record || updatedAt === record.gistUpdatedAt) return;
+    // Only a newer version counts: a lagging reply from GitHub (older than what was just saved) must never win.
+    if (rec !== record || updatedAt === record.gistUpdatedAt || Date.parse(updatedAt) < Date.parse(record.gistUpdatedAt)) return;
     if (JSON.stringify(trip) === JSON.stringify(record.trip)) { record.gistUpdatedAt = updatedAt; if (record.id) saveRecord(record); return; } // same content, only saved again
     if (readOnly || !record.dirty) {
       // not while someone is typing or has a dialog open; the next check picks it up
