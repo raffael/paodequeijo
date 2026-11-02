@@ -913,15 +913,6 @@ function showTrip(record, viewOnly) {
         h('button', { type: 'button', 'aria-label': 'Zoom out', onclick() { setZoom(pxPerDay / 1.4); } }, '−'),
         zoomInput,
         h('button', { type: 'button', 'aria-label': 'Zoom in', onclick() { setZoom(pxPerDay * 1.4); } }, '+')),
-      !readOnly && h('button', {
-        type: 'button',
-        onclick(e) {
-          const r = e.currentTarget.getBoundingClientRect();
-          const mid = (scroller.scrollTop + scroller.clientHeight / 2 - PAD) / pxPerDay;
-          const day = clamp(Math.floor(mid), 0, dayCount() - 1);
-          openAddMenu(tripStart(rec.trip) + day * DAY + 12 * HOUR, r.left, r.bottom + 6);
-        },
-      }, 'Add'),
       !readOnly && saveArea,
       themeButton()),
     readOnly && h('.notice', {}, 'You’re viewing this trip. Click anything to see its details.',
@@ -1296,7 +1287,7 @@ function renderTimeline() {
 
   if (trip.items.every(i => i.type === 'start') && !readOnly) {
     track.append(h('.empty-hint', { style: { left: px(gutter + lineW + 24), top: px(PAD + 56) } },
-      'Point at the colored strip and click to add travel, stays and activities.'));
+      matchMedia('(hover: none)').matches ? 'Tap the timeline to add items' : 'Move the mouse over the timeline to add items'));
   }
 
   // Hovering (or focusing) a capsule or its box lights up both.
