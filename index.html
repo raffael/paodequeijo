@@ -285,14 +285,26 @@
   .menu button { display: block; width: 100%; padding: 5px 8px; text-align: left; font-weight: 400; color: var(--text); background: transparent; border-radius: 6px; }
   .menu button:not(:disabled):hover, .menu button:not(:disabled):focus-visible { background: var(--accent); color: #fff; outline: 0; }
 
-  dialog { width: min(480px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); color: var(--text); background: var(--bg-elevated); border: 0; border-radius: 24px; padding: 24px; box-shadow: 0 0 0 .5px rgb(0 0 0 / .1), 0 16px 48px rgb(0 0 0 / .25); }
+  dialog { width: min(480px, calc(100vw - 24px)); max-height: calc(100dvh - 120px); color: var(--text); background: var(--bg-elevated); border: 0; border-radius: 24px; padding: 0; overflow: hidden; box-shadow: 0 0 0 .5px rgb(0 0 0 / .1), 0 16px 48px rgb(0 0 0 / .25); }
+  dialog[open] { display: flex; flex-direction: column; }
+  dialog > :not(.toast) { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+  .dialog-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 24px 24px 8px; }
+  .dialog-footer { position: relative; flex: none; padding: 12px 24px 24px; }
+  .dialog-footer.divided::before { content: ''; position: absolute; left: 0; right: 0; top: 0; border-top: 1px solid var(--separator); }
+  .dialog-footer .error { margin: 0 0 10px; }
+  /* The scrollbar keeps clear of the rounded corners at the top; the buttons below it don't scroll. */
+  .dialog-body::-webkit-scrollbar { width: 14px; }
+  .dialog-body::-webkit-scrollbar-track { margin: 20px 0 8px; background: transparent; }
+  .dialog-body::-webkit-scrollbar-thumb { background: rgb(128 128 128 / .5); background-clip: content-box; border: 4px solid transparent; border-radius: 999px; }
+  .dialog-body::-webkit-scrollbar-thumb:hover { background: rgb(128 128 128 / .7); background-clip: content-box; }
+  @supports not selector(::-webkit-scrollbar) { .dialog-body { scrollbar-width: thin; } }
   dialog input, dialog textarea, dialog button, dialog .choices span { border-radius: 10px; }
   dialog input, dialog textarea { --field-bg: var(--bg); }
   dialog::backdrop { background: rgb(0 0 0 / .25); }
   dialog h2 { font-size: 17px; margin-bottom: 14px; }
   dialog h2 .item-title, dialog h2 .item-kind.alone { font-size: 17px; }
   dialog h3 { font-size: 13px; font-weight: 600; margin: 18px 0 6px; }
-  .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+  .actions { display: flex; gap: 8px; justify-content: flex-end; }
   .actions .left { margin-right: auto; }
   .choices { border: 0; padding: 0; margin: 0 0 12px; display: flex; flex-wrap: wrap; gap: 5px; }
   .choices label { cursor: pointer; }
@@ -342,6 +354,7 @@
     .status { display: none; }
     .toolbar .title, .toolbar strong.title { font-size: 18px; }
     .zoom-dock input { width: 90px; }
+    dialog { max-height: calc(100dvh - 24px); }
     .debug-dock { bottom: calc(68px + env(safe-area-inset-bottom, 0px)); } /* above the zoom controls */
     .toast { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); } /* above the zoom controls */
     /* iOS zooms the page when a field under 16px gets focus, and a zoomed page pans sideways */
@@ -653,7 +666,23 @@ function toast(message, action) {
   setTimeout(() => el.remove(), action ? 8000 : 3500);
 }
 
+// A dialog's buttons stay put at the bottom, and so do its error messages; everything above them scrolls.
+function pinActions(wrapper) {
+  const actions = wrapper.querySelector(':scope > .actions');
+  if (!actions) return wrapper;
+  const errors = [...wrapper.querySelectorAll(':scope > .error')];
+  const content = h('.dialog-content', {}, ...[...wrapper.childNodes].filter(n => n !== actions && !errors.includes(n)));
+  const body = h('.dialog-body', {}, content);
+  const footer = h('.dialog-footer', {}, ...errors, actions);
+  const update = () => footer.classList.toggle('divided', body.scrollHeight - body.clientHeight - body.scrollTop > 1); // a line shows while there is more to scroll
+  body.addEventListener('scroll', update, { passive: true });
+  new ResizeObserver(update).observe(content);
+  new ResizeObserver(update).observe(body);
+  wrapper.replaceChildren(body, footer);
+  return wrapper;
+}
 function openDialog(content) {
+  pinActions(content);
   const dlg = h('dialog', { onclose() { dlg.remove(); } }, content);
   document.body.append(dlg);
   dlg.showModal();
@@ -1715,7 +1744,7 @@ function openShareDialog() {
     const showSave = !rec.gistId || !token || rec.dirty;
     const link = rec.gistId && h('input', { readOnly: true, value: shareLink(rec), 'aria-label': 'Share link', onfocus(e) { e.target.select(); } });
 
-    body.replaceChildren(h('div', {},
+    body.replaceChildren(...pinActions(h('div', {},
       h('h2', {}, rec.gistId ? 'Share' : 'Save and share'),
       h('p.hint', {}, 'Changes are kept in this browser automatically. People with the link see them after you save.'),
       h('h3', {}, 'Share a view-only link'),
@@ -1739,7 +1768,7 @@ function openShareDialog() {
       h('.row', {},
         h('button', { type: 'button', onclick: downloadTrip }, 'Download trip file'),
         h('button', { type: 'button', onclick() { dlg.close(); pickTripFile(); } }, 'Open a trip file')),
-      h('.actions', {}, h('button', { type: 'button', onclick() { dlg.close(); } }, 'Done'))));
+      h('.actions', {}, h('button', { type: 'button', onclick() { dlg.close(); } }, 'Done')))).childNodes);
   };
   draw();
 }
