@@ -1133,7 +1133,7 @@ function renderTimeline() {
   }
 
   // Zoomed in far enough, travel and activities also show as capsules right next to the line
-  const pillW = mobile ? 8 : 10, pillX = gutter + lineW + 6;
+  const pillW = mobile ? 8 : 10, PILL_GAP = 8, pillX = gutter + lineW + PILL_GAP; // the same space on both sides of the capsules
   const pills = trip.items.filter(i => i.type === 'travel' || i.type === 'activity').map(it => {
     const a = toMs(it.at), b = Math.max(toMs(it.until || it.at), a);
     return { it, a, top: y(a), height: Math.max(dur(b - a), pillW) };
@@ -1148,7 +1148,8 @@ function renderTimeline() {
     return { it, top: y(a), height: Math.max(dur(b - a), mobile ? (it.title ? 52 : 34) : stayMinHeight(it, stayW)), a };
   });
   const stayLanes = assignLanes(stays, 2);
-  const stayX = pillLanes ? pillX + pillLanes * (pillW + 4) + 6 : gutter + lineW + 8;
+  const pillsEnd = pillLanes ? pillX + pillLanes * (pillW + 4) - 4 : 0;
+  const stayX = pillLanes ? pillsEnd + PILL_GAP : gutter + lineW + 8;
   for (const s of stays) {
     const place = placeAt(segs, s.a).name;
     const color = place ? placeColor(place) : '#aeaeb2';
@@ -1170,7 +1171,7 @@ function renderTimeline() {
   }
 
   // Everything else gets a card, connected to the line by a tick
-  const cardX = stayX + (stayLanes ? stayLanes * (stayW + 4) : 0) + 16;
+  const cardX = stayLanes ? stayX + stayLanes * (stayW + 4) + 16 : pillLanes ? pillsEnd + PILL_GAP : stayX + 16;
   const avail = scroller.clientWidth - cardX - 14;
   const cardW = clamp(avail - 6, Math.min(170, avail), 340);
   const cards = trip.items.filter(i => i.type !== 'stay').map(it => {
