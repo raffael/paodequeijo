@@ -235,14 +235,15 @@
   .card:hover, .stay:hover { box-shadow: 0 2px 8px rgb(0 0 0 / .14); }
   .card { transition: transform .32s cubic-bezier(.2,.8,.2,1), height .32s cubic-bezier(.2,.8,.2,1), box-shadow .15s; }
   .tick { transition: transform .32s cubic-bezier(.2,.8,.2,1); }
-  .pill { transition: transform .15s, box-shadow .15s; }
+  .pill { left: calc(var(--x) - var(--grow, 0px)); top: calc(var(--y) - var(--grow, 0px)); width: calc(var(--w) + 2 * var(--grow, 0px)); height: calc(var(--h) + 2 * var(--grow, 0px));
+          transition: left .15s, top .15s, width .15s, height .15s, box-shadow .15s; }
   .card.in-stack:not(.open).status-suggestion { opacity: 1; }
   .card.in-stack:not(.open).status-suggestion > * { opacity: .5; }
   .stack-count { position: absolute; top: 7px; right: 8px; padding: 0 7px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 18px; color: var(--text-secondary); background: var(--fill); }
   .card.open .stack-count { display: none; }
   /* a capsule and its box light up together */
-  .pill.hot { transform: scale(1.35); box-shadow: 0 0 0 3px color-mix(in oklch, var(--pill-bg) 35%, transparent), 0 2px 8px rgb(0 0 0 / .25); }
-  .card.hot { box-shadow: 0 0 0 3px color-mix(in oklch, var(--item-color) 35%, transparent), 0 6px 18px rgb(0 0 0 / .18); }
+  .pill.hot { --grow: 2px; box-shadow: 0 0 0 2px color-mix(in oklch, var(--pill-bg) 22%, transparent), 0 1px 4px rgb(0 0 0 / .15); }
+  .card.hot { box-shadow: 0 0 0 2px color-mix(in oklch, var(--item-color) 22%, transparent), 0 3px 10px rgb(0 0 0 / .12); }
 
   .guide { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid var(--accent); z-index: 5; pointer-events: none; }
   .guide i { position: absolute; left: calc(var(--gutter) + var(--line-width) / 2 - 12px); top: -13px; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: var(--accent); color: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / .3); font-size: 17px; font-style: normal; font-weight: 500; line-height: 1; }
@@ -1221,7 +1222,7 @@ function renderTimeline() {
       title: `${titleFor(it)}, ${metaFor(it)}`, 'aria-hidden': 'true', 'data-for': it.id,
       onclick() { if (readOnly) openDetails(it); else openItemDialog(it); },
       style: {
-        left: px(pillX + pl.lane * (pillW + 4)), top: px(pl.top), width: px(pillW), height: px(pl.height),
+        '--x': px(pillX + pl.lane * (pillW + 4)), '--y': px(pl.top), '--w': px(pillW), '--h': px(pl.height),
         '--pill-bg': color, '--pill-tint': tint(color), '--pill-edge': `color-mix(in oklch, ${color} 60%, var(--edge-mix))`,
       },
     }));
