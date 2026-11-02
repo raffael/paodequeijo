@@ -3,9 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- The decryption key lives in the URL, so the page only talks to GitHub. The one exception is the map preview,
-     which loads Google Maps in a frame, and only after someone clicks "Show map". -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://api.github.com https://gist.githubusercontent.com; frame-src https://www.google.com; base-uri 'none'; form-action 'none'">
+<!-- The decryption key lives in the URL, so the page only talks to GitHub. The exceptions are the map preview, which
+     loads Google Maps in a frame only after someone clicks "Show map", and optional stay pictures, which load from
+     whatever https address the trip's author entered. No page address is sent along (see the referrer policy). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://api.github.com https://gist.githubusercontent.com; frame-src https://www.google.com; img-src https:; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="color-scheme" content="light dark">
 <script>
@@ -183,7 +184,17 @@
 
   .marker .glyph { width: 18px; height: 18px; margin: 0; vertical-align: top; color: var(--text); }
   .stay, .card { position: absolute; cursor: pointer; }
-  .stay { z-index: 2; border-radius: 10px; border: 1.5px solid; padding: 6px 8px; overflow: clip; font-size: 12px; }
+  .stay { z-index: 2; border-radius: 10px; border: 1.5px solid; padding: 6px 8px; overflow: clip; font-size: 12px; background: var(--stay-bg); }
+  .stay-photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+  :root[data-theme=dark] .stay-photo { filter: brightness(.8); }
+  /* The text sits on a frosted, tinted fade that sticks together with it, so it stays readable over any picture. */
+  .stay.has-photo .stay-inner { z-index: 1; }
+  .stay.has-photo .stay-inner::before, .stay.has-photo .stay-inner::after { content: ''; position: absolute; z-index: -1; left: -8px; right: -8px; top: -8px; bottom: -22px; pointer-events: none; }
+  .stay.has-photo .stay-inner::after { background: linear-gradient(to bottom, var(--stay-bg) 0%, color-mix(in srgb, var(--stay-bg) 80%, transparent) 55%, transparent 100%); }
+  .stay.has-photo .stay-inner::before { -webkit-backdrop-filter: blur(10px) saturate(1.4); backdrop-filter: blur(10px) saturate(1.4); -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent); mask-image: linear-gradient(to bottom, #000 55%, transparent); }
+  .detail-picture, .picture-preview img { display: block; width: 100%; height: 150px; object-fit: cover; border-radius: 14px; }
+  .detail-picture { margin-bottom: 14px; }
+  .picture-preview img { height: 130px; border-radius: 10px; margin: 0 0 12px; }
   .stay-inner { position: sticky; top: 8px; display: block; }
   .glyph { width: 1.15em; height: 1.15em; margin-right: .3em; vertical-align: -.2em; flex: none; }
   .stay-icon { display: none; }
@@ -451,6 +462,16 @@ function mapControls(getAddress) {
   return { el: root, update };
 }
 
+// Pictures only load over https; anything else is ignored.
+function imageUrl(u) {
+  const text = (u || '').trim();
+  if (!text) return '';
+  try {
+    const url = new URL(/^[a-z][a-z0-9+.-]*:/i.test(text) ? text : 'https://' + text);
+    return url.protocol === 'https:' ? url.href : '';
+  } catch { return ''; }
+}
+
 // Items get a color from their kind and name, not their times, so moving an item keeps its color.
 function itemColor(it) {
   const hue = placeHash(`${it.type}|${it.mode || it.kind || ''}|${titleText(it)}`) % 360;
@@ -510,10 +531,11 @@ function cleanTrip(data) {
   const items = data.items.filter(it => it && ITEM_TYPES[it.type] && isTime(it.at)).map(it => {
     const out = { id: String(it.id || uid()), type: it.type, at: it.at };
     if (isTime(it.until)) out.until = it.until;
-    for (const k of ['mode', 'kind', 'from', 'to', 'title', 'location', 'address', 'details', 'url', 'notes', 'fromTz', 'toTz']) {
+    for (const k of ['mode', 'kind', 'from', 'to', 'title', 'location', 'address', 'details', 'url', 'image', 'notes', 'fromTz', 'toTz']) {
       if (typeof it[k] === 'string') out[k] = it[k];
     }
     for (const k of ['fromTz', 'toTz']) if (out[k] && !isZone(out[k])) delete out[k];
+    if (out.image && !imageUrl(out.image)) delete out.image;
     if (it.type === 'travel' && !MODES[out.mode]) out.mode = 'car';
     out.status = statusOf(it);
     return out;
@@ -1066,14 +1088,20 @@ function renderTimeline() {
     const place = placeAt(segs, s.a).name;
     const color = place ? placeColor(place) : '#aeaeb2';
     const links = itemLinks(s.it, 'Link');
-    track.append(itemNode('.stay', s.it, {
+    const picture = imageUrl(s.it.image);
+    const photo = picture && h('img.stay-photo', {
+      src: picture, alt: '', loading: 'lazy', decoding: 'async', referrerpolicy: 'no-referrer',
+      onerror() { photo.remove(); stay.classList.remove('has-photo'); }, // a picture that won't load just disappears
+    });
+    const stay = itemNode(`.stay${picture ? '.has-photo' : ''}`, s.it, {
       left: px(stayX + s.lane * (stayW + 4)), top: px(s.top), width: px(stayW), height: px(s.height),
-      'border-color': color, background: `color-mix(in oklch, ${color} var(--stay-mix), var(--bg))`,
-    }, h('span.stay-inner', {},
+      'border-color': color, '--stay-bg': `color-mix(in oklch, ${color} var(--stay-mix), var(--bg))`,
+    }, photo, h('span.stay-inner', {},
       h('span.stay-icon', {}, glyph(s.it)),
       headingNodes(s.it),
       !mobile && h('small', {}, nightsText(s.it)),
-      links.length > 0 && !mobile && h('small', {}, ' ', links))));
+      links.length > 0 && !mobile && h('small', {}, ' ', links)));
+    track.append(stay);
   }
 
   // Everything else gets a card, connected to the line by a tick
@@ -1247,6 +1275,21 @@ function openItemDialog(item) {
   const when = (name, label, value) => text(name, label, value, { type: 'datetime-local', required: true });
   const placeOpts = { required: true, autocomplete: 'off', list: 'known-places' };
   const notes = h('label.field', {}, 'Notes', h('textarea', { name: 'notes', rows: 2, value: item.notes || '' }));
+  const pictureField = () => {
+    const input = h('input', { name: 'image', value: item.image || '', placeholder: 'Optional, an https:// address', autocomplete: 'off', inputmode: 'url' });
+    const preview = h('div.picture-preview');
+    const update = () => {
+      preview.replaceChildren();
+      const typed = input.value.trim(), url = imageUrl(typed);
+      if (!typed) return;
+      if (!url) { preview.append(h('p.hint', {}, 'Use an https:// address.')); return; }
+      preview.append(h('img', { src: url, alt: '', referrerpolicy: 'no-referrer', onerror() { preview.replaceChildren(h('p.hint', {}, "This picture didn't load. Try another address.")); } }));
+    };
+    let timer;
+    input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(update, 600); });
+    update();
+    return [h('label.field', {}, 'Picture link', input), h('p.hint', {}, 'Shown behind the name. It loads from that address whenever the trip is opened.'), preview];
+  };
   const addressField = () => {
     const input = h('textarea', { name: 'address', rows: 2, maxlength: 300, autocomplete: 'off', placeholder: 'Street, postal code, city, country', value: item.address || '' });
     const map = mapControls(() => input.value);
@@ -1278,6 +1321,7 @@ function openItemDialog(item) {
       h('.row', {}, when('at', 'Check-in', item.at), when('until', 'Check-out', item.until)),
       ...addressField(),
       text('url', 'Link', item.url, { placeholder: 'Optional' }),
+      ...pictureField(),
     ],
     start: () => [text('location', 'Where does the trip start?', item.location, placeOpts), when('at', 'When', item.at)],
     end: () => [text('location', 'Where does the trip end?', item.location, placeOpts), when('at', 'When', item.at)],
@@ -1303,6 +1347,11 @@ function openItemDialog(item) {
       const lo = Math.min(tripStart(trip), Math.floor(Math.min(a, b ?? a) / DAY) * DAY);
       const hi = Math.max(tripEnd(trip), (Math.floor(Math.max(a, b ?? a) / DAY) + 1) * DAY);
       if (tripStart(trip) - lo > 7 * DAY || hi - tripEnd(trip) > 7 * DAY) return fail('That is more than a week outside the trip dates. Check the date, or use Change dates if the trip really is that long.');
+      if (data.image) {
+        const picture = imageUrl(data.image);
+        if (!picture) return fail('Enter the picture as an https:// web address.');
+        data.image = picture;
+      }
       if (data.url) {
         const url = safeUrl(data.url);
         if (!url) return fail('Enter the link as a web address, like https://example.com.');
@@ -1349,7 +1398,9 @@ function refocus(id) {
 function openDetails(item) {
   const link = safeUrl(item.url);
   const map = mapQuery(item.address) && mapControls(() => item.address);
+  const picture = item.type === 'stay' && imageUrl(item.image);
   const dlg = openDialog(h('div', {},
+    picture && h('img.detail-picture', { src: picture, alt: '', referrerpolicy: 'no-referrer', onerror(e) { e.target.remove(); } }),
     h('h2', {}, headingNodes(item)),
     h('p.meta', {}, metaNodes(item)),
     h('p', {}, STATUSES[statusOf(item)].join(' ')),
