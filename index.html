@@ -806,7 +806,7 @@ async function saveToGitHub(rec, token) {
   const files = { [GIST_FILE]: { content: await encryptTrip(rec.trip, rec.key) } };
   let gist;
   if (rec.gistId) {
-    const current = await github('GET', `/gists/${rec.gistId}`, token);
+    const current = await github('GET', `/gists/${rec.gistId}?_=${Date.now()}`, token);
     if (rec.gistUpdatedAt && current.updated_at !== rec.gistUpdatedAt &&
         !confirm('This trip was changed on GitHub since you last opened it, possibly from another device. Replace that version with yours?')) {
       return false;
@@ -822,8 +822,8 @@ async function saveToGitHub(rec, token) {
   return true;
 }
 
-async function loadFromGitHub(gistId, key) {
-  const gist = await github('GET', `/gists/${gistId}`);
+async function loadFromGitHub(gistId, key, token) {
+  const gist = await github('GET', `/gists/${gistId}?_=${Date.now()}`, token);
   const file = gist.files[GIST_FILE];
   if (!file) throw new Error("This link doesn't point to a trip.");
   let text = file.content;
@@ -922,7 +922,7 @@ function route() {
   const shared = params.get('trip');
   if (shared) return openShared(shared, location.hash.slice(1));
   const record = loadRecords()[params.get('edit')];
-  if (record) return showTrip(record, false);
+  if (record) { showTrip(record, false); pullRemote(record, { force: true }); return; }
   showHome();
 }
 
@@ -1015,9 +1015,50 @@ async function openShared(gistId, key) {
   if (!key) return fail('This link is missing the part after the #, which unlocks the trip. Ask for the full link.');
   if (!crypto.subtle) return fail('This browser can only open trips over https.');
   try {
-    const { trip, updatedAt } = await loadFromGitHub(gistId, key);
+    const { trip, updatedAt } = await loadFromGitHub(gistId, key, storage.get(TOKEN_KEY));
+    lastPull = Date.now();
     showTrip({ id: null, trip, gistId, key, gistUpdatedAt: updatedAt, dirty: false }, true);
   } catch (err) { fail(err.message); }
+}
+
+// Another device may have saved a newer version of a shared trip. The browser only keeps its own copy, so look at
+// GitHub when a trip opens and whenever you come back to its tab. With no unsaved edits here the newer version just
+// loads. With unsaved edits, nothing is replaced: you choose.
+let pulling = false, lastPull = 0, dismissedRemote = null;
+async function pullRemote(record, { force = false } = {}) {
+  if (!record?.gistId || !record.key || pulling || (!force && Date.now() - lastPull < 20000)) return;
+  pulling = true;
+  lastPull = Date.now();
+  try {
+    const { trip, updatedAt } = await loadFromGitHub(record.gistId, record.key, storage.get(TOKEN_KEY));
+    if (rec !== record || updatedAt === record.gistUpdatedAt) return;
+    if (JSON.stringify(trip) === JSON.stringify(record.trip)) { record.gistUpdatedAt = updatedAt; if (record.id) saveRecord(record); return; } // same content, only saved again
+    if (readOnly || !record.dirty) {
+      // not while someone is typing or has a dialog open; the next check picks it up
+      if (document.querySelector('dialog[open]') || document.activeElement?.matches('input, textarea')) return;
+      applyRemote(record, trip, updatedAt);
+    } else if (updatedAt !== dismissedRemote) {
+      showSyncNotice(record, trip, updatedAt);
+    }
+  } catch { /* offline, rate limited, or the link is gone: keep working with the copy that is here */ }
+  finally { pulling = false; }
+}
+function applyRemote(record, trip, updatedAt) {
+  const top = scroller?.scrollTop ?? 0;
+  record.trip = trip;
+  record.gistUpdatedAt = updatedAt;
+  record.dirty = false;
+  if (record.id) saveRecord(record);
+  showTrip(record, readOnly);
+  scroller.scrollTop = top;
+  toast(readOnly ? 'This trip was updated.' : 'Updated with changes from another device.');
+}
+function showSyncNotice(record, trip, updatedAt) {
+  document.querySelector('.sync-notice')?.remove();
+  const notice = h('.notice.sync-notice', {}, 'This trip was also changed on another device. Your unsaved edits here are kept.',
+    h('button', { type: 'button', onclick() { applyRemote(record, trip, updatedAt); } }, 'Use the other version'),
+    h('button', { type: 'button', onclick() { dismissedRemote = updatedAt; notice.remove(); } }, 'Keep mine'));
+  app.querySelector('.toolbar')?.after(notice);
 }
 
 function editSharedTrip(viewed) {
@@ -1795,6 +1836,8 @@ function openShareDialog() {
 
 if (storage.get(COLOR_KEY) === 'classic') colorMode = 'classic';
 if (DEBUG) document.body.append(debugMenu());
+window.addEventListener('focus', () => pullRemote(rec));
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') pullRemote(rec); });
 window.addEventListener('popstate', route);
 window.addEventListener('hashchange', route);
 window.addEventListener('resize', () => { if (rec && scroller?.isConnected) renderTimeline(); });
