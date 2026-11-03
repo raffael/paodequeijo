@@ -194,6 +194,12 @@
   .hour { position: absolute; left: 0; right: 0; border-top: 1px solid var(--hour-line); }
   .hour span { position: absolute; right: calc(100% - var(--gutter) + 8px); top: 1px; font-size: 11px; white-space: nowrap; color: var(--text-tertiary); }
 
+  /* "Now": 3pt on the left of the strip, 1pt on the right. It sits above the day backgrounds and below everything else. */
+  .now { position: absolute; left: 0; right: 0; height: 0; z-index: 0; pointer-events: none; }
+  .now::before, .now::after { content: ''; position: absolute; top: 0; background: var(--danger); }
+  .now::before { left: 0; width: calc(var(--gutter) + var(--line-width) / 2); height: 3pt; transform: translateY(-50%); }
+  .now::after { left: calc(var(--gutter) + var(--line-width) / 2); right: 0; height: 1pt; transform: translateY(-50%); }
+
   .line { position: absolute; left: var(--gutter); width: var(--line-width); border-radius: 27px; overflow: clip; z-index: 2; cursor: copy; }
   .readonly .line { cursor: default; }
   .seg { position: absolute; left: 0; right: 0; }
@@ -1321,6 +1327,19 @@ function activate(item) {
   if (readOnly) openDetails(item); else openItemDialog(item);
 }
 
+// Wall-clock "now" in the same frame as the trip's times (UTC maths on local clock readings).
+function placeNow(track, T0, T1) {
+  const el = track.querySelector('.now');
+  if (!el) return;
+  const d = new Date(), t = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds());
+  el.hidden = t < T0 || t > T1;
+  el.style.top = px(PAD + (t - T0) / DAY * pxPerDay);
+}
+setInterval(() => {
+  const track = document.querySelector('.track');
+  if (rec && track) placeNow(track, tripStart(rec.trip), tripEnd(rec.trip));
+}, 30000);
+
 function renderTimeline() {
   const trip = rec.trip, T0 = tripStart(trip), T1 = tripEnd(trip);
   const days = dayCount();
@@ -1367,6 +1386,8 @@ function renderTimeline() {
     line.append(el);
   }
   track.append(line);
+  track.append(h('.now'));
+  placeNow(track, T0, T1);
   const lineCenter = gutter + lineW / 2;
   for (const s of segs) {
     if (s.kind !== 'transit') continue;
