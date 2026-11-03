@@ -830,7 +830,18 @@ async function saveToGitHub(rec, token) {
   rec.gistUpdatedAt = gist.updated_at;
   rec.dirty = JSON.stringify(rec.trip) !== snapshot; // edits made while saving still need saving
   saveRecord(rec);
+  syncEditUrl(rec);
   return true;
+}
+
+// The address of an editable, saved trip carries its gist and key, so the link also opens it in a browser that has
+// never seen the trip. Only the id alone would mean nothing there.
+function syncEditUrl(record) {
+  const params = new URLSearchParams(location.search);
+  if (!record?.id || !record.gistId || !record.key || params.get('edit') !== record.id) return;
+  params.set('gist', record.gistId);
+  const url = location.pathname + '?' + params.toString().replace(/debug=(&|$)/, 'debug$1') + '#' + record.key;
+  if (url !== location.pathname + location.search + location.hash) history.replaceState(null, '', url);
 }
 
 async function loadFromGitHub(gistId, key, token) {
@@ -934,6 +945,7 @@ function route() {
   if (shared) return openShared(shared, location.hash.slice(1));
   const record = loadRecords()[params.get('edit')];
   if (record) { showTrip(record, false); pullRemote(record, { force: true }); return; }
+  if (params.get('edit') && params.get('gist') && location.hash.length > 1) return openEditable(params.get('edit'), params.get('gist'), location.hash.slice(1));
   showHome();
 }
 
@@ -1017,6 +1029,22 @@ function showHome() {
   )));
 }
 
+// An edit link opened where the trip isn't stored yet: fetch it from GitHub and keep a local copy to edit.
+async function openEditable(id, gistId, key) {
+  app.replaceChildren(h('.home', {}, h('p', {}, 'Opening trip…')));
+  try {
+    const { trip, updatedAt } = await loadFromGitHub(gistId, key, storage.get(TOKEN_KEY));
+    lastPull = Date.now();
+    const record = { id, trip, gistId, key, gistUpdatedAt: updatedAt, dirty: false };
+    saveRecord(record);
+    showTrip(record, false);
+  } catch (err) {
+    app.replaceChildren(h('.home', {}, h('.home-inner', {},
+      h('h1', {}, "This trip can't be opened"), h('p', {}, err.message),
+      h('button', { type: 'button', onclick() { navigate(''); } }, 'Go to my trips'))));
+  }
+}
+
 async function openShared(gistId, key) {
   app.replaceChildren(h('.home', {}, h('p', {}, 'Opening trip…')));
   const fail = message => app.replaceChildren(h('.home', {}, h('.home-inner', {},
@@ -1089,6 +1117,7 @@ function showTrip(record, viewOnly) {
   rec = record;
   readOnly = viewOnly;
   document.title = `${rec.trip.title} | paodequeijo`;
+  if (!viewOnly) syncEditUrl(rec);
   zoomInput = h('input', {
     type: 'range', min: 0, max: 100, value: zoomToSlider(pxPerDay), 'aria-label': 'Timeline scale',
     oninput() { setZoom(sliderToZoom(+zoomInput.value)); },
