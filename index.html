@@ -291,7 +291,7 @@
   .start-label { position: absolute; z-index: 4; transform: translateY(-50%); padding: 4px 12px; border-radius: 999px; background: var(--bg); font-size: 14px; white-space: nowrap; cursor: pointer; }
   .start-label b { font-weight: 600; }
   .start-label small { margin-left: 6px; font-size: 12px; color: var(--text-secondary); }
-  .start-label:hover { background: color-mix(in srgb, var(--fill-weak), var(--bg)); }
+  .start-label:hover { background: color-mix(in srgb, var(--text) 7%, var(--bg)); } /* opaque, so lines behind never show through */
 
   .menu { position: fixed; z-index: 20; width: 250px; padding: 5px; background: var(--menu-bg); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); border-radius: 10px; box-shadow: 0 0 0 .5px rgb(0 0 0 / .15), 0 8px 28px rgb(0 0 0 / .2); }
   .menu p { margin: 3px 8px 5px; font-size: 12px; color: var(--text-secondary); }
